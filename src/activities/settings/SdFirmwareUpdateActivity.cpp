@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <GfxRenderer.h>
+#include <HalPowerManager.h>
 #include <HalStorage.h>
 #include <I18n.h>
 #include <Logging.h>
@@ -152,6 +153,10 @@ void SdFirmwareUpdateActivity::onConfirmationResult(const ActivityResult& result
 
 void SdFirmwareUpdateActivity::performUpdate() {
   LOG_INF("FW", "SD update: %s (%u bytes)", firmwarePath.c_str(), static_cast<unsigned>(firmwareSize));
+
+  // Hold the CPU at full speed: a downclock mid-write stretches the flash erase
+  // and SD read loop, and the progress redraws that interleave it.
+  HalPowerManager::Lock fullSpeed;
 
   auto progressCb = +[](size_t written, size_t total, void* ctx) {
     auto* self = static_cast<SdFirmwareUpdateActivity*>(ctx);
