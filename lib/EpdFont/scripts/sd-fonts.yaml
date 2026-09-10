@@ -10,6 +10,11 @@
 #   description: Human-readable description (shown in download UI and manifest)
 #   scripts:     Browser groups this family appears under (declared in scriptGroups)
 #   intervals:   Comma-separated Unicode interval presets for fontconvert_sdcard.py
+#   interval_gap: (optional) Keep a run of up to N missing codepoints inside its
+#                interval instead of splitting there. The device keeps the interval
+#                table resident per style but reads glyphs from the file on demand,
+#                so this trades file bytes for heap. Needed for fonts with sparse
+#                CJK coverage, where splitting at every hole costs tens of KB of RAM.
 #   sizes:       Point sizes to generate
 #   force_autohint: (optional) Force FreeType auto-hinter instead of native hinting
 #   styles:      Map of style name -> font source

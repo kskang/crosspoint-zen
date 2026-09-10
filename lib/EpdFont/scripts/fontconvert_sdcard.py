@@ -568,7 +568,7 @@ def extract_ligatures_fonttools(font_path, codepoints):
 
 
 def rasterize_font_style(fontfile, size, intervals, style_id=0, force_autohint=False,
-                         fallback_fontfile=None):
+                         fallback_fontfile=None, interval_gap=0):
     """Rasterize all glyphs for one font style. Returns StyleRasterData."""
     import freetype
 
@@ -610,18 +610,31 @@ def rasterize_font_style(fontfile, size, intervals, style_id=0, force_autohint=F
     # load_glyph here, as that triggers FT_LOAD_RENDER at the target
     # DPI and doubles total rasterization time for no benefit.
     print(f"  [{style_label}] Validating intervals against font...", file=sys.stderr)
+    # A run of up to interval_gap missing codepoints stays inside its interval and
+    # is rasterized as zero-width blanks below. The device keeps the interval table
+    # resident per style but reads glyphs from the file on demand, so trading extra
+    # blank glyph entries for fewer intervals moves bytes off the heap. Sparse CJK
+    # is the case that needs it: KoPub covers 6,007 of the 20,992 Unified ideographs,
+    # which splits into 3,815 intervals at gap 0 and one interval when merged.
+    # The device reads coverage from the intervals, so a merged-in codepoint counts
+    # as present: it draws blank and never falls back to another font.
     validated_intervals = []
     for i_start, i_end in intervals:
-        start = i_start
+        run_start = None
+        last_present = None
         for code_point in range(i_start, i_end + 1):
             has_primary = face.get_char_index(code_point) != 0 or code_point in ligature_glyph_indices
             has_fallback = fallback_face and fallback_face.get_char_index(code_point) != 0
             if not has_primary and not has_fallback:
-                if start < code_point:
-                    validated_intervals.append((start, code_point - 1))
-                start = code_point + 1
-        if start <= i_end:
-            validated_intervals.append((start, i_end))
+                continue
+            if run_start is None:
+                run_start = code_point
+            elif code_point - last_present - 1 > interval_gap:
+                validated_intervals.append((run_start, last_present))
+                run_start = code_point
+            last_present = code_point
+        if run_start is not None:
+            validated_intervals.append((run_start, last_present))
 
     intervals = validated_intervals
     total_glyphs = sum(end - start + 1 for start, end in intervals)
@@ -827,7 +840,7 @@ def style_sections_total_size(sections):
 # --- File writers ---
 
 def generate_cpfont_multistyle(style_fonts, size, intervals, output_path,
-                               force_autohint=False, fallback_style_fonts=None):
+                               force_autohint=False, fallback_style_fonts=None, interval_gap=0):
     """Generate a multi-style v4 .cpfont file.
 
     style_fonts: dict of {style_id: fontfile_path} e.g. {0: "Regular.ttf", 2: "Italic.ttf"}
@@ -849,7 +862,8 @@ def generate_cpfont_multistyle(style_fonts, size, intervals, output_path,
         raster_data[style_id] = rasterize_font_style(
             fontfile, size, intervals, style_id=style_id,
             force_autohint=force_autohint,
-            fallback_fontfile=fallback_fontfile)
+            fallback_fontfile=fallback_fontfile,
+            interval_gap=interval_gap)
 
     # Pack binary sections for each style
     packed_sections = {}  # style_id -> tuple of section bytearrays
@@ -968,6 +982,14 @@ def main():
                         help="Fallback font file for italic style.")
     parser.add_argument("--fallback-bolditalic", dest="fallback_bolditalic",
                         help="Fallback font file for bold-italic style.")
+    parser.add_argument("--interval-gap", dest="interval_gap", type=int, default=0, metavar="N",
+                        help="Keep a run of up to N missing codepoints inside its interval instead "
+                             "of splitting there; they become zero-width blank glyphs. Intervals are "
+                             "resident in RAM per style while glyphs are read from the file, so a "
+                             "large value trades file bytes for heap on sparse coverage (CJK). "
+                             "Merged-in codepoints count as covered, so they render blank instead "
+                             "of falling back to another font. Default 0 splits at every missing "
+                             "codepoint.")
 
     args = parser.parse_args()
 
@@ -1067,7 +1089,8 @@ def main():
         total_size += generate_cpfont_multistyle(
             style_fonts, sz, intervals, output_path,
             force_autohint=args.force_autohint,
-            fallback_style_fonts=fallback_style_fonts)
+            fallback_style_fonts=fallback_style_fonts,
+            interval_gap=args.interval_gap)
     print(f"\nTotal: {len(sizes)} files, {total_size / 1024 / 1024:.2f} MB", file=sys.stderr)
 
 

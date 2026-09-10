@@ -211,6 +211,10 @@ def build_family(
     multi_style = len(resolved_styles) > 1 or "regular" not in resolved_styles
     has_any_multi = any(k in resolved_styles for k in ("regular", "bold", "italic", "bolditalic"))
 
+    interval_gap = family.get("interval_gap")
+    if interval_gap is not None:
+        cmd.extend(["--interval-gap", str(interval_gap)])
+
     if has_any_multi and len(resolved_styles) > 1:
         # Multi-style mode
         for style_name, font_path in resolved_styles.items():
