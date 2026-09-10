@@ -60,7 +60,7 @@ static_assert(ReaderOrientation::PORTRAIT == CrossPointSettings::PORTRAIT &&
 static_assert(ReaderOrientation::ROTATE_90 == CrossPointSettings::LP_MENU_ROTATE_90 &&
                   ReaderOrientation::FLIP_PORTRAIT == CrossPointSettings::LP_MENU_FLIP_PORTRAIT &&
                   ReaderOrientation::FLIP_LANDSCAPE == CrossPointSettings::LP_MENU_FLIP_LANDSCAPE,
-              "crosszen long-press block moved; saved settings need migration");
+              "crosspoint-zen long-press block moved; saved settings need migration");
 
 namespace {
 // The X4 Pro and X4 Classic carry the X4's panel but sit outside isXteinkDevice()

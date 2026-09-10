@@ -4,7 +4,7 @@
 // Orientation shortcuts for the long-press Confirm menu, kept free of firmware
 // headers so the mapping can be exercised by the host test suite.
 //
-// The values below mirror CrossPointSettings::ORIENTATION and the crosszen
+// The values below mirror CrossPointSettings::ORIENTATION and the crosspoint-zen
 // block of CrossPointSettings::LONG_PRESS_MENU_FUNCTION; EpubReaderActivity.cpp
 // static_asserts that they still agree.
 namespace ReaderOrientation {

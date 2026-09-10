@@ -166,8 +166,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     LP_MENU_DISABLED = 1,
     LP_MENU_BOOKMARK = 2,
     LP_MENU_DICTIONARY = 3,
-    // crosszen block — these three values are frozen. Upstream additions belong
-    // AFTER them, not before: renumbering reinterprets every saved settings.json.
+    // crosspoint-zen block — these three values are frozen. Upstream additions
+    // belong AFTER them, not before: renumbering reinterprets every saved
+    // settings.json.
     // EpubReaderActivity.cpp static_asserts the values so a merge that moves
     // them fails the build instead of shifting the setting silently.
     LP_MENU_ROTATE_90 = 4,
