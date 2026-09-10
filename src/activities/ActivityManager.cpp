@@ -28,6 +28,7 @@
 #include "network/UsbDriveActivity.h"
 #include "plugins/PluginCatalogActivity.h"
 #include "reader/ReaderActivity.h"
+#include "reader/ReadingStatsActivity.h"
 #include "reader/RemoteTurnGate.h"
 #include "settings/OpdsServerListActivity.h"
 #include "settings/SettingsListActivity.h"
@@ -175,6 +176,7 @@ void ActivityManager::loop() {
         currentActivity = std::move(stackActivities.back());
         stackActivities.pop_back();
         LOG_DBG("ACT", "Popped from activity stack, new size = %zu", stackActivities.size());
+        currentActivity->onResume();
         // Handle result if necessary
         if (currentActivity->resultHandler) {
           LOG_DBG("ACT", "Handling result for popped activity");
@@ -209,6 +211,7 @@ void ActivityManager::loop() {
         }
       } else if (pendingAction == PendingAction::Push) {
         // Move current activity to stack
+        currentActivity->onPause();
         stackActivities.push_back(std::move(currentActivity));
         // The parent's header back rect must not route taps on the pushed
         // screen (which may draw no header of its own).
@@ -310,6 +313,16 @@ void ActivityManager::goToLibrary() {
   replaceActivity(std::move(activity));
 }
 
+void ActivityManager::goToReadingStats(std::string bookPath, std::string bookTitle) {
+  auto activity =
+      makeUniqueNoThrow<ReadingStatsActivity>(renderer, mappedInput, std::move(bookPath), std::move(bookTitle));
+  if (!activity) {
+    LOG_ERR("ACT", "OOM: reading stats activity");
+    return;
+  }
+  replaceActivity(std::move(activity));
+}
+
 void ActivityManager::goToBrowser() {
   const auto& servers = OPDS_STORE.getServers();
   // Skip the server picker when there's only one server configured
@@ -365,6 +378,8 @@ void ActivityManager::goHome(HomeMenuItem initialMenuItem, bool cleanInitialRefr
       initialMenuItem = HomeMenuItem::FILE_BROWSER;
     } else if (activityName == "Library") {
       initialMenuItem = HomeMenuItem::LIBRARY;
+    } else if (activityName == "ReadingStats") {
+      initialMenuItem = HomeMenuItem::READING_STATS;
     } else if (activityName == "OpdsBookBrowser" || activityName == "PluginCatalog") {
       initialMenuItem = HomeMenuItem::OPDS_BROWSER;
 #ifndef OMIT_WEB_SERVER
@@ -450,7 +465,7 @@ bool ActivityManager::remoteTurn(const bool forward, const bool chapter) {
                           reader->inputOverPage())) {
     return false;
   }
-  const bool turned = chapter ? reader->skipPages(forward ? 1 : -1) : reader->pageTurn(forward);
+  const bool turned = reader->trackPageTurn(forward, chapter, forward ? 1 : -1);
   if (turned) requestUpdate();
   return turned;
 }

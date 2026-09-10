@@ -69,6 +69,8 @@ add_subdirectory(chapter_position)
 add_subdirectory(book_metadata_cache)
 add_subdirectory(home_button)
 add_subdirectory(button_press_navigation)
+add_subdirectory(reading_pace)
+add_subdirectory(page_density)
 
 add_subdirectory(inflate_stream)
 add_subdirectory(zip_file)

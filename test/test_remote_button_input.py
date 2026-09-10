@@ -117,6 +117,9 @@ struct ReaderActivity {
   bool inputOverPage() const { return menu; }
   bool pageTurn(bool forward) { pages += forward ? 1 : -1; return true; }
   bool skipPages(int step) { chapters += step; return true; }
+  bool trackPageTurn(bool forward, bool skip = false, int step = 0) {
+    return skip ? skipPages(step) : pageTurn(forward);
+  }
 };
 struct ActivityManager {
   MappedInputManager& mappedInput;

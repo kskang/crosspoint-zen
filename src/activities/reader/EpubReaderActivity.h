@@ -15,6 +15,7 @@
 #include "ClipSelectionActivity.h"
 #include "EpubReaderMenuActivity.h"
 #include "LinkNoteTitle.h"
+#include "PageDensity.h"
 #include "ProgressMapper.h"
 #include "ReaderActivity.h"
 #include "ReaderToolbarUi.h"
@@ -29,6 +30,7 @@ class EpubReaderActivity final : public ReaderActivity {
   std::string pendingAnchor;
   int cachedSpineIndex = 0;
   int cachedChapterTotalPageCount = 0;
+  PageDensity pageDensity;
   std::optional<uint32_t> cachedVisibleTextOffset;
   std::optional<uint32_t> currentPageVisibleOffset;
   std::optional<uint32_t> pendingOffsetJump;
@@ -232,6 +234,7 @@ class EpubReaderActivity final : public ReaderActivity {
   std::string getBookAuthor() const override { return epub ? epub->getAuthor() : ""; }
   std::string getBookThumbBmpPath() const override { return epub ? epub->getThumbBmpPath() : ""; }
   int getProgressBasisPoints() const override;
+  bool shouldCountForwardPageTurn() const override { return footnoteDepth == 0; }
   void renderBook() override;
   void onEndOfBookRendered() override;
 
@@ -248,6 +251,7 @@ class EpubReaderActivity final : public ReaderActivity {
   bool skipPages(int amount) override;
   bool remoteShortcut(bool readerMenu) override;
   bool isAtEndOfBook() const override;
+  float estimatedRemainingPages() override;
   void onReturnFromEndOfBook() override;
 
   bool skipLoopDelay() override;

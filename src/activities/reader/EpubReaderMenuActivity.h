@@ -2,6 +2,7 @@
 #include <Epub.h>
 #include <I18n.h>
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -25,6 +26,7 @@ class EpubReaderMenuActivity final : public UiListActivity {
     SAVE_CLIPPING,
     VIEW_CLIPPINGS,
     TOGGLE_BOOKMARK,
+    READING_STATS,
     SCREENSHOT,
     DISPLAY_QR,
     GO_HOME,
@@ -43,8 +45,8 @@ class EpubReaderMenuActivity final : public UiListActivity {
 
   explicit EpubReaderMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput, const std::string& title,
                                   const int currentPage, const int totalPages, const int bookProgressPercent,
-                                  const uint8_t currentOrientation, const bool hasFootnotes, bool hasBookmarks,
-                                  bool hasClippings);
+                                  const uint32_t estimatedTimeLeftSeconds, const uint8_t currentOrientation,
+                                  const bool hasFootnotes, bool hasBookmarks, bool hasClippings);
 
   void render(RenderLock&&) override;
   bool handleHomeGesture() override;
@@ -55,7 +57,8 @@ class EpubReaderMenuActivity final : public UiListActivity {
   // fixed-capacity array avoids any heap allocation for the row list. Labels
   // are set once in the constructor (buildMenuRowItems()); buildScreen()
   // only refreshes rows whose values reflect live state.
-  static constexpr size_t MAX_MENU_ITEMS = 19;
+  // Upstream's 19 plus READING_STATS, spelled apart so an upstream bump conflicts.
+  static constexpr size_t MAX_MENU_ITEMS = 19 + 1;
   freeink::ui::ListItem menuRowItems[MAX_MENU_ITEMS]{};
   void buildMenuRowItems();
 
@@ -85,4 +88,5 @@ class EpubReaderMenuActivity final : public UiListActivity {
   int currentPage = 0;
   int totalPages = 0;
   int bookProgressPercent = 0;
+  uint32_t estimatedTimeLeftSeconds = 0;
 };
