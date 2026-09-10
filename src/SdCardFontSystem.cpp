@@ -66,6 +66,17 @@ constexpr UiFontSize kUiFontSizes[] = {
     {UI_12_FONT_ID, 12},
 };
 
+// Built-in KoPub carries hangul + 교육용 한자. Route any font that is missing
+// a CJK codepoint (SD NotoSerifKR, Pretendard UI) to that face.
+void installKoPubHanjaFallback(GfxRenderer& renderer, const int extraPrimaryId = 0) {
+  renderer.setFallbackFont(SMALL_FONT_ID, NOTOSERIF_14_FONT_ID);
+  renderer.setFallbackFont(UI_10_FONT_ID, NOTOSERIF_14_FONT_ID);
+  renderer.setFallbackFont(UI_12_FONT_ID, NOTOSERIF_14_FONT_ID);
+  if (extraPrimaryId != 0) {
+    renderer.setFallbackFont(extraPrimaryId, NOTOSERIF_14_FONT_ID);
+  }
+}
+
 }  // namespace
 
 void SdCardFontSystem::begin(GfxRenderer& renderer) {
@@ -94,6 +105,7 @@ void SdCardFontSystem::begin(GfxRenderer& renderer) {
           if (manager_.loadFamily(*family, renderer, SETTINGS.fontPointSize)) {
         snapFontPointSizeTo(manager_.currentPointSize());
         setupUiFallbacks(renderer);
+        installKoPubHanjaFallback(renderer, manager_.getFontId(SETTINGS.sdFontFamilyName));
         LOG_DBG("SDFS", "Loaded SD card font family: %s", SETTINGS.sdFontFamilyName);
       } else {
         LOG_ERR("SDFS", "Failed to load SD font family: %s (clearing)", SETTINGS.sdFontFamilyName);
@@ -105,6 +117,7 @@ void SdCardFontSystem::begin(GfxRenderer& renderer) {
     }
   }
 
+  installKoPubHanjaFallback(renderer);
   LOG_DBG("SDFS", "SD font system ready (%d families discovered)", registry_.getFamilyCount());
 }
 
@@ -147,6 +160,7 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
     // a size inherited from an SD family has to come back into that set.
     snapFontPointSizeTo(snapToNearestPointSize(BUILTIN_READER_POINT_SIZES, std::size(BUILTIN_READER_POINT_SIZES),
                                                SETTINGS.fontPointSize));
+    installKoPubHanjaFallback(renderer);
     return;
   }
 
@@ -181,6 +195,7 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
     if (manager_.loadFamily(*family, renderer, SETTINGS.fontPointSize)) {
       snapFontPointSizeTo(manager_.currentPointSize());
       setupUiFallbacks(renderer);
+      installKoPubHanjaFallback(renderer, manager_.getFontId(wantedFamily));
       LOG_DBG("SDFS", "Loaded SD font family: %s", wantedFamily);
     } else {
       LOG_ERR("SDFS", "Failed to load SD font family: %s (clearing)", wantedFamily);

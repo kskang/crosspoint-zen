@@ -19,7 +19,9 @@
 #include "home/FileBrowserActivity.h"
 #include "home/HomeActivity.h"
 #include "library/LibraryListActivity.h"
+#ifndef OMIT_WEB_SERVER
 #include "network/CrossPointWebServerActivity.h"
+#endif
 #include "network/UsbDriveActivity.h"
 #include "reader/ReaderActivity.h"
 #include "settings/OpdsServerListActivity.h"
@@ -238,7 +240,11 @@ void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
 }
 
 void ActivityManager::goToFileTransfer() {
+#ifndef OMIT_WEB_SERVER
   replaceActivity(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput));
+#else
+  goHome();
+#endif
 }
 
 void ActivityManager::goToUsbDrive() {
@@ -321,8 +327,10 @@ void ActivityManager::goHome(HomeMenuItem initialMenuItem, bool cleanInitialRefr
       initialMenuItem = HomeMenuItem::LIBRARY;
     } else if (activityName == "OpdsBookBrowser") {
       initialMenuItem = HomeMenuItem::OPDS_BROWSER;
+#ifndef OMIT_WEB_SERVER
     } else if (activityName == "CrossPointWebServer") {
       initialMenuItem = HomeMenuItem::FILE_TRANSFER;
+#endif
     } else if (activityName == "Settings") {
       initialMenuItem = HomeMenuItem::SETTINGS_MENU;
     }
