@@ -90,6 +90,18 @@ if (parsedSize != fileSize) {
 
 ## `section.bin`
 
+### Version 49
+
+Version 49 keeps the version 48 serialized layout unchanged. It was bumped
+because the built-in KoPub font now includes hanja; older caches hold word
+positions measured with zero-width missing glyphs.
+
+### Version 48
+
+The section header adds `characterWrap` after `wordSpacingPercent`; it
+participates in cache validation. Hangul/CJK character gaps are wrap
+opportunities only and are not stretched to fill a justified line.
+
 ### Version 47
 
 The section header adds signed `characterSpacing` (pixels) and unsigned
@@ -191,7 +203,7 @@ import std.mem;
 import std.string;
 import std.core;
 
-#define EXPECTED_VERSION 47
+#define EXPECTED_VERSION 49
 #define MAX_STRING_LENGTH 65535
 #define FOOTNOTE_NUMBER_LEN 32
 #define FOOTNOTE_HREF_LEN 256
@@ -357,6 +369,7 @@ struct SectionBin {
     bool focusReadingEnabled;
     s8 characterSpacing;
     u8 wordSpacingPercent;
+    bool characterWrap;
 
     u16 pageCount;
     u32 pageLutOffset;

@@ -465,7 +465,8 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
   // previous one in the source) may be turned into a gap-less break opportunity. When real
   // whitespace separated the two words, that space is content and must be rendered: Korean
   // is a space-delimited script written in Hangul, which utf8IsCjkBreakable() covers.
-  if (attachToPrevious && !words.empty() &&
+  // Off: keep the glued run as one wrap unit (어절).
+  if (characterWrap && attachToPrevious && !words.empty() &&
       hasCjkBreakOpportunityBetween(lastCodepoint(wordStore.view(words.back())), firstCodepoint(word))) {
     effectiveAttachToPrevious = false;
     effectiveNoSpaceBefore = true;
@@ -494,30 +495,32 @@ void ParsedText::addWord(std::string word, const EpdFontFamily::Style fontStyle,
     wordVisibleOffsetDeltas.reserve(newCapacity);
   };
 
-  if (auto breakOffsets = cjkCharacterBreakByteOffsets(word); !breakOffsets.empty()) {
-    // CJK-heavy paragraphs can push hundreds of tiny tokens quickly when CSS toggles
-    // inline styles. Reserve once up front to avoid repeated vector growth reallocations.
-    ensureTokenCapacity(breakOffsets.size() + 1);
-    bool firstToken = true;
-    size_t tokenStart = 0;
-    uint32_t tokenVisibleOffset = visibleTextOffset;
-    for (const size_t breakOffset : breakOffsets) {
-      if (breakOffset <= tokenStart || breakOffset > word.size()) continue;
-      const std::string_view token(word.data() + tokenStart, breakOffset - tokenStart);
-      pushToken(token, firstToken ? effectiveAttachToPrevious : false, firstToken ? effectiveNoSpaceBefore : true,
-                /*focusBoundary=*/0, tokenVisibleOffset);
-      tokenVisibleOffset += countCodepoints(token);
-      firstToken = false;
-      tokenStart = breakOffset;
+  if (characterWrap) {
+    if (auto breakOffsets = cjkCharacterBreakByteOffsets(word); !breakOffsets.empty()) {
+      // CJK-heavy paragraphs can push hundreds of tiny tokens quickly when CSS toggles
+      // inline styles. Reserve once up front to avoid repeated vector growth reallocations.
+      ensureTokenCapacity(breakOffsets.size() + 1);
+      bool firstToken = true;
+      size_t tokenStart = 0;
+      uint32_t tokenVisibleOffset = visibleTextOffset;
+      for (const size_t breakOffset : breakOffsets) {
+        if (breakOffset <= tokenStart || breakOffset > word.size()) continue;
+        const std::string_view token(word.data() + tokenStart, breakOffset - tokenStart);
+        pushToken(token, firstToken ? effectiveAttachToPrevious : false, firstToken ? effectiveNoSpaceBefore : true,
+                  /*focusBoundary=*/0, tokenVisibleOffset);
+        tokenVisibleOffset += countCodepoints(token);
+        firstToken = false;
+        tokenStart = breakOffset;
+      }
+      if (tokenStart < word.size()) {
+        pushToken(std::string_view(word).substr(tokenStart), firstToken ? effectiveAttachToPrevious : false,
+                  firstToken ? effectiveNoSpaceBefore : true, /*focusBoundary=*/0, tokenVisibleOffset);
+      }
+      if (wordStartsRtl) {
+        hasRtlWord = true;
+      }
+      return;
     }
-    if (tokenStart < word.size()) {
-      pushToken(std::string_view(word).substr(tokenStart), firstToken ? effectiveAttachToPrevious : false,
-                firstToken ? effectiveNoSpaceBefore : true, /*focusBoundary=*/0, tokenVisibleOffset);
-    }
-    if (wordStartsRtl) {
-      hasRtlWord = true;
-    }
-    return;
   }
 
   if (containsCjkBreakableCodepoint(word)) {
@@ -1380,7 +1383,9 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
     if (wordIdx == 0) continue;
     const size_t boundaryIdx = lastBreakAt + wordIdx;
     const bool isSpaceToken = lineWords[wordIdx] == " ";
-    if (TokenBoundary::isJustifiableGap(continuesVec[boundaryIdx], noSpaceBeforeVec[boundaryIdx], isSpaceToken)) {
+    // Character-wrap boundaries are line-break opportunities, not stretchable gaps.
+    if (!noSpaceBeforeVec[boundaryIdx] &&
+        TokenBoundary::isJustifiableGap(continuesVec[boundaryIdx], noSpaceBeforeVec[boundaryIdx], isSpaceToken)) {
       actualGapCount++;
     }
     if (continuesVec[boundaryIdx]) {
@@ -1473,9 +1478,7 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
     for (size_t wordIdx = 0; wordIdx < reorderedWidthsScratch.size(); wordIdx++) {
       reorderedWordWidthSum += reorderedWidthsScratch[wordIdx];
       if (wordIdx > 0 && reorderedNoSpaceBeforeScratch[wordIdx]) {
-        // Unicode break opportunity with no inserted Latin-style space. It is still
-        // a stretchable gap for justified CJK/Korean text.
-        reorderedGapCount++;
+        // Character-wrap boundary: carries letter spacing but is not a stretchable gap.
         reorderedNaturalGaps += blockStyle.characterSpacing;
       } else if (wordIdx > 0 && !reorderedContinuesScratch[wordIdx]) {
         reorderedGapCount++;
@@ -1547,7 +1550,7 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
                                                             firstCodepoint(reorderedWordsScratch[wordIdx + 1]),
                                                             reorderedStylesScratch[wordIdx]),
                                    wordSpacingPercent);
-        if (effectiveAlignment == CssTextAlign::Justify && !isLastLine) {
+        if (!nextNoSpace && effectiveAlignment == CssTextAlign::Justify && !isLastLine) {
           gap += reorderedJustifyExtra;
         }
         xpos += gap;
@@ -1596,7 +1599,8 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
                                                                     lineWordStyles[wordIdx]),
                                            wordSpacingPercent);
           }
-          if (wordIdx + 1 < lineWordCount && effectiveAlignment == CssTextAlign::Justify && !isLastLine) {
+          if (wordIdx + 1 < lineWordCount && !nextNoSpace && effectiveAlignment == CssTextAlign::Justify &&
+              !isLastLine) {
             gap += justifyExtra;
           }
           xpos -= gap;
@@ -1639,7 +1643,8 @@ void ParsedText::extractLine(const size_t breakIndex, const int pageWidth, const
                                                                     lineWordStyles[wordIdx]),
                                            wordSpacingPercent);
           }
-          if (wordIdx + 1 < lineWordCount && effectiveAlignment == CssTextAlign::Justify && !isLastLine) {
+          if (wordIdx + 1 < lineWordCount && !nextNoSpace && effectiveAlignment == CssTextAlign::Justify &&
+              !isLastLine) {
             gap += justifyExtra;
           }
           xpos += wordWidths[lastBreakAt + wordIdx] + gap;

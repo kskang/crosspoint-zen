@@ -31,6 +31,7 @@ class ChapterHtmlSlimParserTest : public ::testing::TestWithParam<const char*> {
                                static_cast<uint16_t>(renderer.getScreenHeight()),
                                false,
                                false,
+                               true,
                                {},
                                true,
                                "",
@@ -226,6 +227,48 @@ TEST(TextSpacingLayout, TrackingSeparatesCjkTokensAndScalesWordSpaces) {
   }
   EXPECT_EQ(renderer.getTextAdvanceX(0, "ab", EpdFontFamily::REGULAR), 16);
   EXPECT_EQ(renderer.getSpaceWidth(0, EpdFontFamily::REGULAR), 4);
+}
+
+// Fake renderer: 8 px per syllable, 4 px per space.
+TEST(CharacterWrapLayout, JustifyStretchesWordGapsButNotCharacterBreaks) {
+  GfxRenderer renderer;
+  BlockStyle style;
+  style.alignment = CssTextAlign::Justify;
+  style.textIndentDefined = true;
+  ParsedText text(false, false, false, style, /*characterWrap=*/true);
+  text.addWord("가나", EpdFontFamily::REGULAR);
+  text.addWord("다라", EpdFontFamily::REGULAR);
+  text.addWord("마바", EpdFontFamily::REGULAR);
+  std::vector<std::vector<int16_t>> lines;
+  text.layoutAndExtractLines(renderer, 0, 44, [&](std::unique_ptr<TextBlock> line, auto) {
+    std::vector<int16_t> xs;
+    for (size_t i = 0; i < line->wordCount(); ++i) xs.push_back(line->wordXpos(i));
+    lines.push_back(std::move(xs));
+  });
+  ASSERT_GE(lines.size(), 2u);
+  // The 8 px of slack all goes to the one space between 나 and 다.
+  EXPECT_EQ(lines[0], (std::vector<int16_t>{0, 8, 28, 36}));
+}
+
+TEST(CharacterWrapLayout, OffWrapsOnlyAtSpaces) {
+  GfxRenderer renderer;
+  for (bool characterWrap : {true, false}) {
+    BlockStyle style;
+    style.alignment = CssTextAlign::Left;
+    style.textIndentDefined = true;
+    ParsedText text(false, false, false, style, characterWrap);
+    text.addWord("가나다", EpdFontFamily::REGULAR);
+    text.addWord("라마", EpdFontFamily::REGULAR);
+    std::vector<size_t> tokensPerLine;
+    text.layoutAndExtractLines(
+        renderer, 0, 40, [&](std::unique_ptr<TextBlock> line, auto) { tokensPerLine.push_back(line->wordCount()); });
+    if (characterWrap) {
+      ASSERT_FALSE(tokensPerLine.empty());
+      EXPECT_EQ(tokensPerLine[0], 4u);  // 가·나·다 + space + 라 = 36 px
+    } else {
+      EXPECT_EQ(tokensPerLine, (std::vector<size_t>{1, 1}));  // 가나다 + space + 라마 = 44 px
+    }
+  }
 }
 
 TEST(TextSpacingLayout, WordSpacingChangesWrapThreshold) {
