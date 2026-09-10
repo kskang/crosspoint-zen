@@ -169,9 +169,16 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     LP_MENU_DISABLED = 1,
     LP_MENU_BOOKMARK = 2,
     LP_MENU_DICTIONARY = 3,
-    LP_MENU_READER_MENU = 4,
-    LP_MENU_CREATE_CLIPPING = 5,
-    LP_MENU_FOOTNOTES = 6,
+    // crosszen block — these three values are frozen. Upstream additions belong
+    // AFTER them, not before: renumbering reinterprets every saved settings.json.
+    // EpubReaderActivity.cpp static_asserts the values so a merge that moves
+    // them fails the build instead of shifting the setting silently.
+    LP_MENU_ROTATE_90 = 4,
+    LP_MENU_FLIP_PORTRAIT = 5,
+    LP_MENU_FLIP_LANDSCAPE = 6,
+    LP_MENU_READER_MENU = 7,
+    LP_MENU_CREATE_CLIPPING = 8,
+    LP_MENU_FOOTNOTES = 9,
     LONG_PRESS_MENU_FUNCTION_COUNT
   };
 
