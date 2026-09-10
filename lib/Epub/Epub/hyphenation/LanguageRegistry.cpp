@@ -1,5 +1,13 @@
 #include "LanguageRegistry.h"
 
+#ifdef OMIT_HYPHENATION
+
+const LanguageHyphenator* getLanguageHyphenatorForPrimaryTag(const std::string&) { return nullptr; }
+
+LanguageEntryView getLanguageEntries() { return LanguageEntryView{nullptr, 0}; }
+
+#else
+
 #include <algorithm>
 #include <array>
 
@@ -61,3 +69,5 @@ LanguageEntryView getLanguageEntries() {
   const auto& allEntries = entries();
   return LanguageEntryView{allEntries.data(), allEntries.size()};
 }
+
+#endif
