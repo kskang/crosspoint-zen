@@ -17,7 +17,7 @@
 class Activity;    // forward declaration
 class RenderLock;  // forward declaration
 
-enum class HomeMenuItem { NONE, FILE_BROWSER, LIBRARY, OPDS_BROWSER, FILE_TRANSFER, SETTINGS_MENU };
+enum class HomeMenuItem { NONE, FILE_BROWSER, LIBRARY, READING_STATS, OPDS_BROWSER, FILE_TRANSFER, SETTINGS_MENU };
 
 /**
  * ActivityManager
@@ -30,7 +30,7 @@ enum class HomeMenuItem { NONE, FILE_BROWSER, LIBRARY, OPDS_BROWSER, FILE_TRANSF
  * wifi network, and get back the selected network when the user is done.
  *
  * Main differences from Android's ActivityManager:
- * - No onPause/onResume, since we don't have a concept of background activities
+ * - Stacked activities receive onPause/onResume around the child activity
  * - onActivityResult is implemented via a callback instead of a separate method, for simplicity
  */
 class ActivityManager {
@@ -86,6 +86,7 @@ class ActivityManager {
   void goToSettings();
   void goToFileBrowser(std::string path = {});
   void goToLibrary();
+  void goToReadingStats(std::string bookPath = {}, std::string bookTitle = {});
   void goToBrowser();
   void goToReader(std::string path, bool allowFastInitialRefresh = false);
   void goToSleep(bool fromTimeout = false);

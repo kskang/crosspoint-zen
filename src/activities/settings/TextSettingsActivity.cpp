@@ -29,10 +29,9 @@ constexpr StrId LAYOUT_ROW_NAME_IDS[] = {
     StrId::STR_ALIGNMENT,    StrId::STR_CHARACTER_WRAP, StrId::STR_SCREEN_MARGIN};
 constexpr StrId STYLE_ROW_NAME_IDS[] = {StrId::STR_FOCUS_READING,
 #ifndef OMIT_HYPHENATION
-    StrId::STR_HYPHENATION,
+                                        StrId::STR_HYPHENATION,
 #endif
-    StrId::STR_EMBEDDED_STYLE,
-    StrId::STR_TEXT_AA};
+                                        StrId::STR_EMBEDDED_STYLE, StrId::STR_TEXT_AA};
 
 int findCurrentFontIndex(const SdCardFontRegistry* registry, const char* sdFontFamilyName, uint8_t fontFamily) {
   if (sdFontFamilyName[0] != '\0' && registry) {

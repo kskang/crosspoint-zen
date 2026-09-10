@@ -4,23 +4,29 @@
 #include <HalFrontlight.h>
 #include <I18n.h>
 
+#include <algorithm>
+#include <cstdio>
+
 #include "CrossPointSettings.h"
 #include "MappedInputManager.h"
 #include "ReaderUtils.h"
+#include "ReadingStats.h"
 #include "components/UITheme.h"
 
 namespace fui = freeink::ui;
 
 EpubReaderMenuActivity::EpubReaderMenuActivity(GfxRenderer& renderer, MappedInputManager& mappedInput,
                                                const std::string& title, const int currentPage, const int totalPages,
-                                               const int bookProgressPercent, const uint8_t currentOrientation,
-                                               const bool hasFootnotes, const bool hasBookmarks)
+                                               const int bookProgressPercent, const uint32_t estimatedTimeLeftSeconds,
+                                               const uint8_t currentOrientation, const bool hasFootnotes,
+                                               const bool hasBookmarks)
     : UiListActivity("EpubReaderMenu", renderer, mappedInput),
       title(title),
       pendingOrientation(currentOrientation),
       currentPage(currentPage),
       totalPages(totalPages),
-      bookProgressPercent(bookProgressPercent) {
+      bookProgressPercent(bookProgressPercent),
+      estimatedTimeLeftSeconds(estimatedTimeLeftSeconds) {
   buildMenuItems(menuItems, hasFootnotes, hasBookmarks);
   buildMenuRowItems();
 }
@@ -40,6 +46,7 @@ void EpubReaderMenuActivity::buildMenuRowItems() {
 void EpubReaderMenuActivity::buildMenuItems(std::vector<MenuItem>& items, bool hasFootnotes, bool hasBookmarks) {
   items.clear();
   items.reserve(MAX_MENU_ITEMS);
+  items.push_back({MenuAction::READING_STATS, StrId::STR_READING_STATS});
   items.push_back({MenuAction::SELECT_CHAPTER, StrId::STR_SELECT_CHAPTER});
   if (hasFootnotes) {
     items.push_back({MenuAction::FOOTNOTES, StrId::STR_FOOTNOTES});
@@ -158,15 +165,23 @@ void EpubReaderMenuActivity::buildScreen(UiScreen& screen) {
       static_cast<int16_t>(renderer.getScreenHeight() - (safe.y + safe.height)), static_cast<int16_t>(safe.x)});
 
   // Progress summary where the old sub-header band sat.
-  std::string progressLine;
+  char progressLine[112] = {};
+  int written = 0;
   if (totalPages > 0) {
-    progressLine = std::string(tr(STR_CHAPTER_PREFIX)) + std::to_string(currentPage) + "/" +
-                   std::to_string(totalPages) + std::string(tr(STR_PAGES_SEPARATOR));
+    written = snprintf(progressLine, sizeof(progressLine), "%s%d/%d%s%s%d%%", tr(STR_CHAPTER_PREFIX), currentPage,
+                       totalPages, tr(STR_PAGES_SEPARATOR), tr(STR_BOOK_PREFIX), bookProgressPercent);
+  } else {
+    written = snprintf(progressLine, sizeof(progressLine), "%s%d%%", tr(STR_BOOK_PREFIX), bookProgressPercent);
   }
-  progressLine += std::string(tr(STR_BOOK_PREFIX)) + std::to_string(bookProgressPercent) + "%";
+  if (estimatedTimeLeftSeconds > 0 && written > 0) {
+    char duration[40];
+    ReadingStatsStore::formatDuration(estimatedTimeLeftSeconds, duration, sizeof(duration));
+    const size_t used = std::min(static_cast<size_t>(written), sizeof(progressLine) - 1);
+    snprintf(progressLine + used, sizeof(progressLine) - used, tr(STR_STATS_REMAINING_INLINE_FORMAT), duration);
+  }
   const fui::Rect band = screen.takeTop(static_cast<int16_t>(metrics.tabBarHeight));
   const int16_t pad = screen.theme().headerSidePadding;
-  screen.target().text(band.inset(fui::Insets{0, pad, 0, pad}), progressLine.c_str(), screen.theme().smallText);
+  screen.target().text(band.inset(fui::Insets{0, pad, 0, pad}), progressLine, screen.theme().smallText);
   screen.spacer(static_cast<int16_t>(metrics.verticalSpacing));
 
   // menuRowItems's labels/actionValue were set once in the constructor (see

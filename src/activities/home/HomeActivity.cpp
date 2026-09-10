@@ -21,15 +21,16 @@
 #include "CrossPointState.h"
 #include "MappedInputManager.h"
 #include "OpdsServerStore.h"
+#include "ReadingStats.h"
 #include "RecentBooksStore.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 
 int HomeActivity::getMenuItemCount() const {
 #ifdef OMIT_WEB_SERVER
-  int count = 3;  // File Browser, Library, Settings
+  int count = 4;  // File Browser, Library, Reading Stats, Settings
 #else
-  int count = 4;  // File Browser, Library, File transfer, Settings
+  int count = 5;  // File Browser, Library, Reading Stats, File transfer, Settings
 #endif
   if (!recentBooks.empty()) {
     count += recentBooks.size();
@@ -248,6 +249,15 @@ void HomeActivity::onEnter() {
     coverGridUi->begin(recentBooks, hasOpdsServers, hasContinueReading);
   }
 
+  const BookReadingStats stats =
+      recentBooks.empty() ? BookReadingStats{} : ReadingStatsStore::loadBook(recentBooks[0].path);
+  if (stats.totalReadingSeconds > 0 || stats.totalPagesTurned > 0) {
+    char duration[24];
+    ReadingStatsStore::formatDuration(stats.totalReadingSeconds, duration, sizeof(duration));
+    snprintf(readingStatsSummary, sizeof(readingStatsSummary), tr(STR_STATS_HOME_SUMMARY_FORMAT), duration,
+             static_cast<unsigned long>(stats.totalPagesTurned));
+  }
+
   const auto base = static_cast<int>(recentBooks.size());
   selectorIndex = initialMenuItem == HomeMenuItem::NONE ? 0 : base + menuItemToIndex(initialMenuItem, hasOpdsServers);
 
@@ -316,6 +326,9 @@ void HomeActivity::loop() {
         break;
       case HomeMenuItem::LIBRARY:
         onLibraryOpen();
+        break;
+      case HomeMenuItem::READING_STATS:
+        onReadingStatsOpen();
         break;
       case HomeMenuItem::OPDS_BROWSER:
         onOpdsBrowserOpen();
@@ -496,7 +509,8 @@ void HomeActivity::render(RenderLock&&) {
   // homeTopPadding, so the height must shrink by topPadding or the band (and a
   // centered title, e.g. RoundedRaff's book title) sinks into the tile.
   GUI.drawHeader(renderer, Rect{0, metrics.topPadding, pageWidth, metrics.homeTopPadding - metrics.topPadding},
-                 metrics.homeContinueReadingInMenu && !recentBooks.empty() ? recentBooks[0].title.c_str() : nullptr);
+                 metrics.homeContinueReadingInMenu && !recentBooks.empty() ? recentBooks[0].title.c_str() : nullptr,
+                 readingStatsSummary[0] != '\0' ? readingStatsSummary : nullptr);
 
   // Record the tile rect so storeCoverBuffer (called from the theme) knows
   // which sub-region of the framebuffer to snapshot. ~16 KB in Portrait
@@ -512,17 +526,18 @@ void HomeActivity::render(RenderLock&&) {
 
   // Build menu items dynamically
 #ifdef OMIT_WEB_SERVER
-  std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_LIBRARY), tr(STR_SETTINGS_TITLE)};
-  std::vector<UIIcon> menuIcons = {Folder, Library, Settings};
-#else
-  std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_LIBRARY), tr(STR_FILE_TRANSFER),
+  std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_LIBRARY), tr(STR_READING_STATS),
                                         tr(STR_SETTINGS_TITLE)};
-  std::vector<UIIcon> menuIcons = {Folder, Library, Transfer, Settings};
+  std::vector<UIIcon> menuIcons = {Folder, Library, Book, Settings};
+#else
+  std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_LIBRARY), tr(STR_READING_STATS),
+                                        tr(STR_FILE_TRANSFER), tr(STR_SETTINGS_TITLE)};
+  std::vector<UIIcon> menuIcons = {Folder, Library, Book, Transfer, Settings};
 #endif
 
   if (hasOpdsServers) {
-    menuItems.insert(menuItems.begin() + 2, tr(STR_OPDS_BROWSER));
-    menuIcons.insert(menuIcons.begin() + 2, Blocks);
+    menuItems.insert(menuItems.begin() + 3, tr(STR_OPDS_BROWSER));
+    menuIcons.insert(menuIcons.begin() + 3, Blocks);
   }
 
   if (metrics.homeContinueReadingInMenu && !recentBooks.empty()) {
@@ -562,6 +577,14 @@ void HomeActivity::onSelectBook(const std::string& path) { activityManager.goToR
 void HomeActivity::onFileBrowserOpen() { activityManager.goToFileBrowser(); }
 
 void HomeActivity::onLibraryOpen() { activityManager.goToLibrary(); }
+
+void HomeActivity::onReadingStatsOpen() {
+  if (recentBooks.empty()) {
+    activityManager.goToReadingStats();
+  } else {
+    activityManager.goToReadingStats(recentBooks[0].path, recentBooks[0].title);
+  }
+}
 
 void HomeActivity::onSettingsOpen() { activityManager.goToSettings(); }
 

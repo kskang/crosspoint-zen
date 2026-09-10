@@ -19,6 +19,7 @@ class HomeActivity final : public Activity {
   bool firstRenderDone = false;
   bool hasOpdsServers = false;
   bool hasContinueReading = false;
+  char readingStatsSummary[64] = {};
   bool coverRendered = false;      // Track if cover has been rendered once
   bool coverBufferStored = false;  // Track if cover buffer is stored
   uint8_t* coverBuffer = nullptr;  // HomeActivity's own buffer for cover image
@@ -41,6 +42,8 @@ class HomeActivity final : public Activity {
     ++i;
     if (item == HomeMenuItem::LIBRARY) return i;
     ++i;
+    if (item == HomeMenuItem::READING_STATS) return i;
+    ++i;
     if (item == HomeMenuItem::OPDS_BROWSER) return hasOpdsUrl ? i : 0;
     if (hasOpdsUrl) ++i;
 #ifndef OMIT_WEB_SERVER
@@ -56,6 +59,7 @@ class HomeActivity final : public Activity {
     int i = 0;
     if (idx == i++) return HomeMenuItem::FILE_BROWSER;
     if (idx == i++) return HomeMenuItem::LIBRARY;
+    if (idx == i++) return HomeMenuItem::READING_STATS;
     if (hasOpdsUrl && idx == i++) return HomeMenuItem::OPDS_BROWSER;
 #ifndef OMIT_WEB_SERVER
     if (idx == i++) return HomeMenuItem::FILE_TRANSFER;
@@ -66,6 +70,7 @@ class HomeActivity final : public Activity {
   void onSelectBook(const std::string& path);
   void onFileBrowserOpen();
   void onLibraryOpen();
+  void onReadingStatsOpen();
   void onSettingsOpen();
 #ifndef OMIT_WEB_SERVER
   void onFileTransferOpen();

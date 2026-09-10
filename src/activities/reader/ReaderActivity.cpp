@@ -10,10 +10,19 @@
 #include "CrossPointState.h"
 #include "EpubReaderActivity.h"
 #include "ReaderUtils.h"
+#include "ReadingStatsActivity.h"
 #include "RecentBooksStore.h"
 #include "SdCardFontSystem.h"
 #include "TxtReaderActivity.h"
 #include "XtcReaderActivity.h"
+
+namespace {
+constexpr uint32_t MIN_PAGE_DWELL_MS = 2000;
+constexpr uint32_t MAX_READING_IDLE_MS = 5 * 60 * 1000;
+constexpr uint32_t MIN_SAVED_READING_SECONDS = 10;
+constexpr uint32_t MIN_SESSION_SECONDS = 60;
+constexpr uint16_t RECENT_PACE_SAMPLES = 50;
+}  // namespace
 
 ReaderActivity::ReaderActivity(const char* name, GfxRenderer& renderer, MappedInputManager& mappedInput,
                                std::string bookPath, const bool allowFastInitialRefresh)
@@ -67,6 +76,10 @@ void ReaderActivity::onEnter() {
     return;
   }
 
+  readingStats = ReadingStatsStore::loadBook(bookPath);
+  globalReadingStats = ReadingStatsStore::loadGlobal();
+  readingStatsLoaded = true;
+
   APP_STATE.openEpubPath = bookPath;
   APP_STATE.saveToFile();
   RECENT_BOOKS.addBook(bookPath, getBookTitle(), getBookAuthor(), getBookThumbBmpPath());
@@ -74,6 +87,7 @@ void ReaderActivity::onEnter() {
 }
 
 void ReaderActivity::onExit() {
+  saveReadingStats(true);
   Activity::onExit();
 
   LOG_INF("MEM", "reader exit: free=%u max_block=%u", (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
@@ -84,6 +98,156 @@ void ReaderActivity::onExit() {
 
   endOfBookOptions.reset();
   endOfBookOptionsReady.store(false, std::memory_order_release);
+}
+
+void ReaderActivity::onPause() { saveReadingStats(false); }
+
+void ReaderActivity::onResume() {
+  if (readingStatsLoaded && !readingStatsDirty) {
+    const BookReadingStats loadedBookStats = ReadingStatsStore::loadBook(bookPath);
+    const GlobalReadingStats loadedGlobalStats = ReadingStatsStore::loadGlobal();
+    const bool statsWereReset = loadedBookStats.totalReadingSeconds < readingStats.totalReadingSeconds ||
+                                loadedBookStats.totalPagesTurned < readingStats.totalPagesTurned ||
+                                loadedBookStats.sessionCount < readingStats.sessionCount ||
+                                loadedGlobalStats.totalReadingSeconds < globalReadingStats.totalReadingSeconds ||
+                                loadedGlobalStats.totalPagesTurned < globalReadingStats.totalPagesTurned ||
+                                loadedGlobalStats.totalSessions < globalReadingStats.totalSessions ||
+                                loadedGlobalStats.completedBooks < globalReadingStats.completedBooks;
+    readingStats = loadedBookStats;
+    globalReadingStats = loadedGlobalStats;
+    if (statsWereReset) {
+      sessionReadingMs = 0;
+      committedSessionSeconds = 0;
+      recentPaceSeconds = 0;
+      recentPaceSamples = 0;
+    }
+  }
+  pageDisplayedAtMs.store(0, std::memory_order_release);
+  paceSampleWarmupPending = true;
+}
+
+void ReaderActivity::recordVisiblePageTime(const uint32_t nowMs) {
+  const uint32_t startedAt = pageDisplayedAtMs.exchange(0, std::memory_order_acq_rel);
+  if (startedAt == 0) return;
+  const uint32_t elapsedMs = nowMs - startedAt;
+  if (elapsedMs == 0 || elapsedMs > MAX_READING_IDLE_MS) return;
+
+  sessionReadingMs = sessionReadingMs > UINT32_MAX - elapsedMs ? UINT32_MAX : sessionReadingMs + elapsedMs;
+}
+
+void ReaderActivity::recordPaceSample(const uint32_t seconds) {
+  if (seconds == 0) return;
+  readingStats.recordForwardPageRead(seconds);
+  recentPaceSeconds += seconds;
+  recentPaceSamples++;
+  if (recentPaceSamples < RECENT_PACE_SAMPLES) return;
+
+  readingStats.restartPaceIfRecentDiverged(recentPaceSeconds, recentPaceSamples);
+  recentPaceSeconds = 0;
+  recentPaceSamples = 0;
+}
+
+float ReaderActivity::estimatedRemainingPages() {
+  const ScreenshotInfo info = getScreenshotInfo();
+  if (info.totalPages <= 0 || info.currentPage <= 0 || info.currentPage >= info.totalPages) return 0.0f;
+  return static_cast<float>(info.totalPages - info.currentPage);
+}
+
+void ReaderActivity::updateEstimatedTimeLeft() {
+  const uint32_t previousEstimate = readingStats.estimatedTimeLeftSeconds;
+  const float secondsPerPage = readingStats.secondsPerForwardPage();
+  if (secondsPerPage <= 0.0f || readingStats.paceSampleCount < 2) {
+    readingStats.estimatedTimeLeftSeconds = 0;
+    if (previousEstimate != 0) readingStatsDirty = true;
+    return;
+  }
+  const float remainingPages = estimatedRemainingPages();
+  if (remainingPages <= 0.0f) {
+    readingStats.estimatedTimeLeftSeconds = 0;
+    if (previousEstimate != 0) readingStatsDirty = true;
+    return;
+  }
+  const double seconds = static_cast<double>(remainingPages) * secondsPerPage;
+  readingStats.estimatedTimeLeftSeconds = seconds >= UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(seconds + 0.5);
+  if (readingStats.estimatedTimeLeftSeconds != previousEstimate) readingStatsDirty = true;
+}
+
+void ReaderActivity::saveReadingStats(const bool finishSession) {
+  if (!readingStatsLoaded) return;
+  recordVisiblePageTime(millis());
+  updateEstimatedTimeLeft();
+  const uint32_t sessionSeconds = sessionReadingMs / 1000;
+  if (sessionSeconds >= MIN_SAVED_READING_SECONDS && sessionSeconds > committedSessionSeconds) {
+    const uint32_t delta = sessionSeconds - committedSessionSeconds;
+    readingStats.totalReadingSeconds =
+        readingStats.totalReadingSeconds > UINT32_MAX - delta ? UINT32_MAX : readingStats.totalReadingSeconds + delta;
+    globalReadingStats.totalReadingSeconds = globalReadingStats.totalReadingSeconds > UINT32_MAX - delta
+                                                 ? UINT32_MAX
+                                                 : globalReadingStats.totalReadingSeconds + delta;
+    committedSessionSeconds = sessionSeconds;
+    readingStatsDirty = true;
+  }
+  if (finishSession && sessionSeconds >= MIN_SESSION_SECONDS) {
+    if (readingStats.sessionCount < UINT16_MAX) readingStats.sessionCount++;
+    if (globalReadingStats.totalSessions < UINT32_MAX) globalReadingStats.totalSessions++;
+    readingStatsDirty = true;
+  }
+
+  if (readingStatsDirty) {
+    const bool bookSaved = ReadingStatsStore::saveBook(bookPath, readingStats);
+    const bool globalSaved = ReadingStatsStore::saveGlobal(globalReadingStats);
+    readingStatsDirty = !bookSaved || !globalSaved;
+  }
+}
+
+void ReaderActivity::markBookCompleted() {
+  // Reaching the end leaves nothing to estimate, whether or not this is the first time.
+  if (readingStats.estimatedTimeLeftSeconds != 0) {
+    readingStats.estimatedTimeLeftSeconds = 0;
+    readingStatsDirty = true;
+  }
+  if (readingStats.isCompleted) return;
+  readingStats.isCompleted = true;
+  if (globalReadingStats.completedBooks < UINT32_MAX) globalReadingStats.completedBooks++;
+  readingStatsDirty = true;
+}
+
+void ReaderActivity::openReadingStats() {
+  auto activity = makeUniqueNoThrow<ReadingStatsActivity>(renderer, mappedInput, bookPath, getBookTitle());
+  if (!activity) {
+    LOG_ERR("READER", "OOM: reading stats activity");
+    return;
+  }
+  startActivityForResult(std::move(activity), [](const ActivityResult&) {});
+}
+
+bool ReaderActivity::trackPageTurn(const bool isForward, const bool skip, const int skipAmount) {
+  const uint32_t nowMs = millis();
+  const uint32_t startedAt = pageDisplayedAtMs.load(std::memory_order_acquire);
+  const uint32_t elapsedMs = startedAt == 0 ? 0 : nowMs - startedAt;
+  const bool shouldCountForward = shouldCountForwardPageTurn();
+  recordVisiblePageTime(nowMs);
+
+  const bool changed = skip ? skipPages(skipAmount) : pageTurn(isForward);
+  if (!changed) return false;
+  if (skip || !isForward || !shouldCountForward) {
+    paceSampleWarmupPending = true;
+    if (isForward && shouldCountForward && isAtEndOfBook()) markBookCompleted();
+    return true;
+  }
+
+  if (elapsedMs >= MIN_PAGE_DWELL_MS) {
+    if (readingStats.totalPagesTurned < UINT32_MAX) readingStats.totalPagesTurned++;
+    if (globalReadingStats.totalPagesTurned < UINT32_MAX) globalReadingStats.totalPagesTurned++;
+    readingStatsDirty = true;
+    if (!paceSampleWarmupPending && elapsedMs <= MAX_READING_IDLE_MS) {
+      recordPaceSample((elapsedMs + 500) / 1000);
+    }
+  }
+  paceSampleWarmupPending = false;
+  if (isAtEndOfBook()) markBookCompleted();
+  updateEstimatedTimeLeft();
+  return true;
 }
 
 bool ReaderActivity::handleBackNavigation() {
@@ -164,15 +328,15 @@ void ReaderActivity::loop() {
 
   if (prevTriggered) {
     if (skip) {
-      skipPages(-10);
+      trackPageTurn(false, true, -10);
     } else {
-      pageTurn(false);
+      trackPageTurn(false);
     }
   } else {
     if (skip) {
-      skipPages(10);
+      trackPageTurn(true, true, 10);
     } else {
-      pageTurn(true);
+      trackPageTurn(true);
     }
   }
   requestUpdate();
@@ -198,6 +362,8 @@ void ReaderActivity::render(RenderLock&&) {
   }
 
   renderBook();
+  uint32_t unset = 0;
+  pageDisplayedAtMs.compare_exchange_strong(unset, millis(), std::memory_order_release, std::memory_order_relaxed);
 }
 
 bool ReaderActivity::handleForcedRefresh() {
