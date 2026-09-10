@@ -64,6 +64,7 @@ add_subdirectory(page_link)
 add_subdirectory(content_opf_parser)
 add_subdirectory(chapter_position)
 add_subdirectory(home_button)
+add_subdirectory(reader_orientation)
 add_subdirectory(reading_pace)
 add_subdirectory(page_density)
 

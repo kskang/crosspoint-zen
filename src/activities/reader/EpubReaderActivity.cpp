@@ -36,6 +36,7 @@
 #include "QrDisplayActivity.h"
 #include "ReaderActivity.h"
 #include "ReaderFontSizes.h"
+#include "ReaderOrientation.h"
 #include "ReaderToolbarUi.h"
 #include "ReaderUtils.h"
 #include "RecentBooksStore.h"
@@ -46,6 +47,20 @@
 #include "util/BookmarkUtil.h"
 #include "util/ButtonNavigator.h"
 #include "util/ScreenshotUtil.h"
+
+// ReaderOrientation duplicates these values so the mapping stays host-testable.
+// If an upstream merge renumbers either enum, fix ReaderOrientation.h to match
+// and migrate saved settings — do not just update the assert.
+static_assert(ReaderOrientation::PORTRAIT == CrossPointSettings::PORTRAIT &&
+                  ReaderOrientation::LANDSCAPE_CW == CrossPointSettings::LANDSCAPE_CW &&
+                  ReaderOrientation::INVERTED == CrossPointSettings::INVERTED &&
+                  ReaderOrientation::LANDSCAPE_CCW == CrossPointSettings::LANDSCAPE_CCW &&
+                  ReaderOrientation::ORIENTATION_COUNT == CrossPointSettings::ORIENTATION_COUNT,
+              "ReaderOrientation is out of sync with CrossPointSettings::ORIENTATION");
+static_assert(ReaderOrientation::ROTATE_90 == CrossPointSettings::LP_MENU_ROTATE_90 &&
+                  ReaderOrientation::FLIP_PORTRAIT == CrossPointSettings::LP_MENU_FLIP_PORTRAIT &&
+                  ReaderOrientation::FLIP_LANDSCAPE == CrossPointSettings::LP_MENU_FLIP_LANDSCAPE,
+              "crosszen long-press block moved; saved settings need migration");
 
 namespace {
 // The X4 Pro and X4 Classic carry the X4's panel but sit outside isXteinkDevice()
@@ -283,24 +298,23 @@ void EpubReaderActivity::openReaderMenu() {
   const int bookProgressPercent = bookPercentFor(position);
   updateEstimatedTimeLeft();
 
-  startActivityForResult(
-      std::make_unique<EpubReaderMenuActivity>(renderer, mappedInput, epub->getTitle(), position.displayPage(),
-                                               position.totalPages, bookProgressPercent,
-                                               readingStats.estimatedTimeLeftSeconds, SETTINGS.orientation,
-                                               !currentPageFootnotes.empty(), !cachedBookmarks.empty()),
-      [this](const ActivityResult& result) {
-        const auto& menu = std::get<MenuResult>(result.data);
+  startActivityForResult(std::make_unique<EpubReaderMenuActivity>(
+                             renderer, mappedInput, epub->getTitle(), position.displayPage(), position.totalPages,
+                             bookProgressPercent, readingStats.estimatedTimeLeftSeconds, SETTINGS.orientation,
+                             !currentPageFootnotes.empty(), !cachedBookmarks.empty()),
+                         [this](const ActivityResult& result) {
+                           const auto& menu = std::get<MenuResult>(result.data);
 
-        if (SETTINGS.orientation != menu.orientation) {
-          applyOrientation(menu.orientation);
-        }
+                           if (SETTINGS.orientation != menu.orientation) {
+                             applyOrientation(menu.orientation);
+                           }
 
-        toggleAutoPageTurn(menu.pageTurnOption);
+                           toggleAutoPageTurn(menu.pageTurnOption);
 
-        if (!result.isCancelled) {
-          onReaderMenuConfirm(static_cast<EpubReaderMenuActivity::MenuAction>(menu.action));
-        }
-      });
+                           if (!result.isCancelled) {
+                             onReaderMenuConfirm(static_cast<EpubReaderMenuActivity::MenuAction>(menu.action));
+                           }
+                         });
 }
 
 bool EpubReaderActivity::buildTickHeapGate() {
@@ -526,6 +540,13 @@ void EpubReaderActivity::loop() {
         break;
       case CrossPointSettings::LP_MENU_DICTIONARY:
         openDictionaryWordSelect();
+        return;
+      case CrossPointSettings::LP_MENU_ROTATE_90:
+      case CrossPointSettings::LP_MENU_FLIP_PORTRAIT:
+      case CrossPointSettings::LP_MENU_FLIP_LANDSCAPE:
+        // confirmLongPressThreshold() already gated this on ORIENTATION_HOLD_MS.
+        applyOrientation(ReaderOrientation::next(SETTINGS.longPressMenuFunction, SETTINGS.orientation));
+        requestUpdate();
         return;
       case CrossPointSettings::LP_MENU_READER_MENU:
       case CrossPointSettings::LP_MENU_DISABLED:
@@ -947,6 +968,10 @@ unsigned long EpubReaderActivity::confirmLongPressThreshold() const {
       return ReaderUtils::BOOKMARK_HOLD_MS;
     case CrossPointSettings::LP_MENU_KOSYNC:
       return KOREADER_STORE.hasCredentials() ? ReaderUtils::GO_HOME_MS : 0;
+    case CrossPointSettings::LP_MENU_ROTATE_90:
+    case CrossPointSettings::LP_MENU_FLIP_PORTRAIT:
+    case CrossPointSettings::LP_MENU_FLIP_LANDSCAPE:
+      return ReaderUtils::ORIENTATION_HOLD_MS;
     case CrossPointSettings::LP_MENU_READER_MENU:
     case CrossPointSettings::LP_MENU_DISABLED:
     default:

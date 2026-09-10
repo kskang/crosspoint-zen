@@ -225,9 +225,11 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   fontFamily = clamp(storedFontFamily, BUILTIN_FONT_COUNT, 0);
   if (BoardConfig::hasHomeKey() && doc["homeButtonLongPressAction"].isNull() &&
       !doc["longPressMenuFunction"].isNull()) {
-    static constexpr HomeButtonAction LEGACY[] = {HomeButtonAction::Sync, HomeButtonAction::Ignore,
-                                                  HomeButtonAction::Bookmark, HomeButtonAction::Dictionary,
-                                                  HomeButtonAction::ReaderMenu};
+    // Indexed by LONG_PRESS_MENU_FUNCTION. The rotations have no home-button action.
+    static constexpr HomeButtonAction LEGACY[] = {
+        HomeButtonAction::Sync,   HomeButtonAction::Ignore, HomeButtonAction::Bookmark, HomeButtonAction::Dictionary,
+        HomeButtonAction::Ignore, HomeButtonAction::Ignore, HomeButtonAction::Ignore,   HomeButtonAction::ReaderMenu};
+    static_assert(std::size(LEGACY) == LP_MENU_READER_MENU + 1, "one entry per long-press menu value");
     if (s.longPressMenuFunction < sizeof(LEGACY) / sizeof(LEGACY[0])) {
       s.homeButtonLongPressAction = static_cast<uint8_t>(LEGACY[s.longPressMenuFunction]);
       needsResave = true;

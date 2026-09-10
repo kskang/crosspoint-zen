@@ -181,8 +181,12 @@ inline SettingInfo buildDictionarySetting(const std::vector<DictionaryEntry>& di
 }
 
 inline std::vector<StrId> buildLongPressMenuValues() {
-  static constexpr StrId VALUES[] = {StrId::STR_KOSYNC, StrId::STR_DISABLED, StrId::STR_BOOKMARK_OPTION,
-                                     StrId::STR_DICTIONARY, StrId::STR_READER_MENU};
+  // Order must match LONG_PRESS_MENU_FUNCTION: the setting is stored as an index
+  // into this array. STR_READER_MENU stays last so the hasHomeKey() trim below
+  // still drops exactly that entry.
+  static constexpr StrId VALUES[] = {
+      StrId::STR_KOSYNC,       StrId::STR_DISABLED,         StrId::STR_BOOKMARK_OPTION,   StrId::STR_DICTIONARY,
+      StrId::STR_LP_ROTATE_90, StrId::STR_LP_FLIP_PORTRAIT, StrId::STR_LP_FLIP_LANDSCAPE, StrId::STR_READER_MENU};
   const size_t count = BoardConfig::hasHomeKey() ? std::size(VALUES) : std::size(VALUES) - 1;
   return {VALUES, VALUES + count};
 }
