@@ -281,11 +281,11 @@ void EpubReaderActivity::openReaderMenu() {
     // go-to-percent... cancelled back to the menu), so the framebuffer holds
     // that screen, not the page: re-render the page and let renderBook() put
     // the toolbar on top. The in-reader fast path is openOverlay().
+    if (!ensureToolbarUi()) return;
     overlay = Overlay::Toolbar;
     focusedTool = 0;
     panelHoldJumped = false;
     panelCursorShown = !mappedInput.hasTouch();
-    if (!toolbarUi) toolbarUi = std::make_unique<ReaderToolbarUi>(renderer);
     toolbarUi->begin();
     discardOverlayPage();
     requestUpdate();
@@ -298,23 +298,30 @@ void EpubReaderActivity::openReaderMenu() {
   const int bookProgressPercent = bookPercentFor(position);
   updateEstimatedTimeLeft();
 
-  startActivityForResult(std::make_unique<EpubReaderMenuActivity>(
-                             renderer, mappedInput, epub->getTitle(), position.displayPage(), position.totalPages,
-                             bookProgressPercent, readingStats.estimatedTimeLeftSeconds, SETTINGS.orientation,
-                             !currentPageFootnotes.empty(), !cachedBookmarks.empty()),
-                         [this](const ActivityResult& result) {
-                           const auto& menu = std::get<MenuResult>(result.data);
+  // Heap-tight after pagination, and an SD font's resident tables make it
+  // tighter: a bare new here abort()s the firmware instead of failing.
+  auto menu = makeUniqueNoThrow<EpubReaderMenuActivity>(renderer, mappedInput, epub->getTitle(), position.displayPage(),
+                                                        position.totalPages, bookProgressPercent,
+                                                        readingStats.estimatedTimeLeftSeconds, SETTINGS.orientation,
+                                                        !currentPageFootnotes.empty(), !cachedBookmarks.empty());
+  if (!menu) {
+    LOG_ERR("ERS", "OOM: reader menu");
+    return;
+  }
 
-                           if (SETTINGS.orientation != menu.orientation) {
-                             applyOrientation(menu.orientation);
-                           }
+  startActivityForResult(std::move(menu), [this](const ActivityResult& result) {
+    const auto& menu = std::get<MenuResult>(result.data);
 
-                           toggleAutoPageTurn(menu.pageTurnOption);
+    if (SETTINGS.orientation != menu.orientation) {
+      applyOrientation(menu.orientation);
+    }
 
-                           if (!result.isCancelled) {
-                             onReaderMenuConfirm(static_cast<EpubReaderMenuActivity::MenuAction>(menu.action));
-                           }
-                         });
+    toggleAutoPageTurn(menu.pageTurnOption);
+
+    if (!result.isCancelled) {
+      onReaderMenuConfirm(static_cast<EpubReaderMenuActivity::MenuAction>(menu.action));
+    }
+  });
 }
 
 bool EpubReaderActivity::buildTickHeapGate() {
@@ -2006,11 +2013,20 @@ void EpubReaderActivity::settleOverlayRefresh() {
   renderer.cleanupGrayscaleWithFrameBuffer();  // waits, then reseeds the baseline
 }
 
+// Allocated before any overlay state changes: a failed allocation leaves the
+// reader on the page instead of in an overlay with no chrome to route input.
+bool EpubReaderActivity::ensureToolbarUi() {
+  if (toolbarUi) return true;
+  toolbarUi = makeUniqueNoThrow<ReaderToolbarUi>(renderer);
+  if (!toolbarUi) LOG_ERR("ERS", "OOM: reader toolbar");
+  return toolbarUi != nullptr;
+}
+
 void EpubReaderActivity::openOverlay(Overlay target) {
   mappedInput.resetHomeButtonInput();
+  if (!ensureToolbarUi()) return;
   const Overlay previous = overlay;
   overlay = target;
-  if (!toolbarUi) toolbarUi = std::make_unique<ReaderToolbarUi>(renderer);
   if (previous == Overlay::None) toolbarUi->begin();
   // Buttons show a cursor from the start; touch boards only once a button moves it.
   panelCursorShown = !mappedInput.hasTouch();

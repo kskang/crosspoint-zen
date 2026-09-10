@@ -141,6 +141,7 @@ class EpubReaderActivity final : public ReaderActivity {
   void openReaderMenu();
   // Toolbar reader menu (see Overlay above).
   bool usesToolbarMenu() const;
+  bool ensureToolbarUi();
   void openOverlay(Overlay target);
   void closeOverlayToPage();
   void discardOverlayPage();
