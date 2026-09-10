@@ -23,6 +23,7 @@ struct PreviewKey {
   uint8_t wordSpacingPercent = 100;
   bool focusReading = false;
   bool hyphenation = false;
+  bool characterWrap = true;
   bool operator==(const PreviewKey&) const = default;
 };
 

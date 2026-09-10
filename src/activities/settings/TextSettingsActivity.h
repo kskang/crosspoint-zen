@@ -36,10 +36,19 @@ class TextSettingsActivity final : public UiTabListActivity {
     ParaSpacing,
     ParaIndentation,
     Alignment,
+    CharacterWrap,
     ScreenMargin,
     Count
   };
-  enum class StyleRow { FocusReading, Hyphenation, EmbeddedStyle, AntiAliasing, Count };
+  enum class StyleRow {
+    FocusReading,
+#ifndef OMIT_HYPHENATION
+    Hyphenation,
+#endif
+    EmbeddedStyle,
+    AntiAliasing,
+    Count
+  };
 
   // --- UiTabListActivity contract ---
   int listCount() const override;

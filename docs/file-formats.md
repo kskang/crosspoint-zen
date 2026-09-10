@@ -90,6 +90,12 @@ if (parsedSize != fileSize) {
 
 ## `section.bin`
 
+### Version 61
+
+The section header adds `characterWrap` after `wordSpacingPercent`; it
+participates in cache validation. When set, a Hangul word may split between
+syllables at a line end even with hyphenation off.
+
 ### Version 60
 
 The serialized layout is unchanged. Text that runs straight into a block or
@@ -314,7 +320,7 @@ import std.mem;
 import std.string;
 import std.core;
 
-#define EXPECTED_VERSION 57
+#define EXPECTED_VERSION 61
 #define MAX_STRING_LENGTH 65535
 #define FOOTNOTE_NUMBER_LEN 32
 #define FOOTNOTE_HREF_LEN 256
@@ -518,6 +524,7 @@ struct SectionBin {
     bool focusReadingEnabled;
     s8 characterSpacing;
     u8 wordSpacingPercent;
+    bool characterWrap;
 
     u16 pageCount;
     u32 pageLutOffset;

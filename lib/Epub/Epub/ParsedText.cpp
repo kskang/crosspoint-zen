@@ -955,7 +955,16 @@ void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
   auto wordWidths = calculateWordWidths(renderer, fontId);
 
   std::vector<size_t> lineBreakIndices;
-  if (hyphenationEnabled) {
+  // Character wrap needs the splitting layout only where a Hangul word may split; other
+  // paragraphs keep the balanced line breaks.
+  bool splitHangul = false;
+  for (size_t i = 0; characterWrap && !hyphenationEnabled && !splitHangul && i < words.size(); ++i) {
+    const std::string_view word = wordAt(i);
+    const auto* cursor = reinterpret_cast<const uint8_t*>(word.data());
+    const auto* const end = cursor + word.size();
+    while (cursor < end && !splitHangul) splitHangul = utf8IsHangul(utf8NextCodepoint(&cursor));
+  }
+  if (hyphenationEnabled || splitHangul) {
     // Use greedy layout that can split words mid-loop when a hyphenated prefix fits.
     lineBreakIndices =
         computeHyphenatedLineBreaks(renderer, fontId, pageWidth, wordWidths, wordContinues, wordNoSpaceBefore);
@@ -1427,8 +1436,11 @@ bool ParsedText::hyphenateWordAtIndex(const size_t wordIndex, const int availabl
   // annotation, so the hyphenator sees the whole word and every legal break is reachable.
   // Hangul breaks come first so they win a tie against a hyphenated break at the same width.
   auto breakInfos = hangulLineEndBreaks(word);
-  const auto hyphenBreaks = Hyphenator::breakOffsets(word, allowFallbackBreaks);
-  breakInfos.insert(breakInfos.end(), hyphenBreaks.begin(), hyphenBreaks.end());
+  // Character wrap alone reaches here for Hangul splits; other words keep the overflow fallback only.
+  if (hyphenationEnabled || allowFallbackBreaks) {
+    const auto hyphenBreaks = Hyphenator::breakOffsets(word, allowFallbackBreaks);
+    breakInfos.insert(breakInfos.end(), hyphenBreaks.begin(), hyphenBreaks.end());
+  }
   if (breakInfos.empty()) {
     return false;
   }

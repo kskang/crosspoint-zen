@@ -1551,6 +1551,49 @@ TEST(TextSpacingLayout, TrackingSeparatesCjkTokensAndScalesWordSpaces) {
   EXPECT_EQ(renderer.getSpaceWidth(0, EpdFontFamily::REGULAR), 4);
 }
 
+// Fake renderer: 8 px per syllable, 4 px per space.
+TEST(CharacterWrapLayout, JustifyStretchesOnlyWordGaps) {
+  GfxRenderer renderer;
+  BlockStyle style;
+  style.alignment = CssTextAlign::Justify;
+  style.textIndentDefined = true;
+  ParsedText text(false, false, style, /*paragraphIndentSpaces=*/0, /*characterWrap=*/true);
+  text.addWord("가나", EpdFontFamily::REGULAR);
+  text.addWord("다라", EpdFontFamily::REGULAR);
+  text.addWord("마바", EpdFontFamily::REGULAR);
+  std::vector<std::vector<int16_t>> lines;
+  text.layoutAndExtractLines(renderer, 0, 44, [&](std::unique_ptr<TextBlock> line, auto) {
+    std::vector<int16_t> xs;
+    for (size_t i = 0; i < line->wordCount(); ++i) xs.push_back(line->wordXpos(i));
+    lines.push_back(std::move(xs));
+  });
+  ASSERT_GE(lines.size(), 2u);
+  // The 8 px of slack all goes to the one space between 나 and 다.
+  EXPECT_EQ(lines[0], (std::vector<int16_t>{0, 28}));
+}
+
+TEST(CharacterWrapLayout, OffWrapsOnlyAtSpaces) {
+  GfxRenderer renderer;
+  for (bool characterWrap : {true, false}) {
+    BlockStyle style;
+    style.alignment = CssTextAlign::Left;
+    style.textIndentDefined = true;
+    ParsedText text(false, false, style, /*paragraphIndentSpaces=*/0, characterWrap);
+    text.addWord("가나다", EpdFontFamily::REGULAR);
+    text.addWord("라마", EpdFontFamily::REGULAR);
+    std::vector<std::string> firstLine;
+    text.layoutAndExtractLines(renderer, 0, 40, [&](std::unique_ptr<TextBlock> line, auto) {
+      if (!firstLine.empty()) return;
+      for (size_t i = 0; i < line->wordCount(); ++i) firstLine.emplace_back(line->wordText(i));
+    });
+    if (characterWrap) {
+      EXPECT_EQ(firstLine, (std::vector<std::string>{"가나다", "라"}));  // 24 + 4 + 8 = 36 px
+    } else {
+      EXPECT_EQ(firstLine, (std::vector<std::string>{"가나다"}));  // 가나다 + space + 라마 = 44 px
+    }
+  }
+}
+
 TEST(TextSpacingLayout, WordSpacingChangesWrapThreshold) {
   GfxRenderer renderer;
   for (uint8_t percent : {50, 100, 125, 200}) {

@@ -90,6 +90,8 @@ class ParsedText {
   uint8_t wordSpacingPercent = 100;
   uint8_t paragraphIndentSpaces;
   bool hyphenationEnabled;
+  // Hangul words may split between syllables at a line end, without hyphenation.
+  bool characterWrap;
   bool focusReadingEnabled;
   bool isNaturalAlign;
   bool hasRtlWord;
@@ -138,10 +140,12 @@ class ParsedText {
 
  public:
   explicit ParsedText(const bool hyphenationEnabled = false, const bool focusReadingEnabled = false,
-                      const BlockStyle& blockStyle = BlockStyle(), const uint8_t paragraphIndentSpaces = 2)
+                      const BlockStyle& blockStyle = BlockStyle(), const uint8_t paragraphIndentSpaces = 2,
+                      const bool characterWrap = false)
       : blockStyle(blockStyle),
         paragraphIndentSpaces(paragraphIndentSpaces),
         hyphenationEnabled(hyphenationEnabled),
+        characterWrap(characterWrap),
         focusReadingEnabled(focusReadingEnabled),
         isNaturalAlign(false),
         hasRtlWord(false) {}
