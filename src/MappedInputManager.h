@@ -123,6 +123,8 @@ class MappedInputManager {
   // True when the control axis is flipped relative to the physical buttons: always on touch boards,
   // or when button-only boards opt in, while the screen is currently INVERTED / LANDSCAPE_CCW.
   [[nodiscard]] bool isNavDirectionSwapped() const;
+  // True while the screen is rendered in either landscape orientation.
+  [[nodiscard]] bool isLandscape() const;
 
  private:
   HalGPIO& gpio;

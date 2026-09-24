@@ -662,7 +662,7 @@ void EpubReaderActivity::loop() {
     return;
   }
 
-  auto [prevTriggered, nextTriggered, fromTilt] = ReaderUtils::detectPageTurn(mappedInput);
+  auto [prevTriggered, nextTriggered, fromTilt, fromSideHold] = ReaderUtils::detectPageTurn(mappedInput);
   prevTriggered = prevTriggered || touch.prev;
   nextTriggered = nextTriggered || touch.next;
   if (!prevTriggered && !nextTriggered) {
@@ -679,7 +679,7 @@ void EpubReaderActivity::loop() {
   }
 
   const unsigned long heldMs = (touch.prev || touch.next) ? touch.heldMs : mappedInput.getHeldTime();
-  const bool longPress = !fromTilt && heldMs >= ReaderUtils::SKIP_HOLD_MS;
+  const bool longPress = !fromTilt && !fromSideHold && heldMs >= ReaderUtils::SKIP_HOLD_MS;
   if (longPress && SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP) {
     trackPageTurn(nextTriggered, true, nextTriggered ? 1 : -1);
     requestUpdate();

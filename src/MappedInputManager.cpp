@@ -78,6 +78,11 @@ MappedInputManager::Button MappedInputManager::mapScreenDirection(const Button b
   return directions[orientation][direction];
 }
 
+bool MappedInputManager::isLandscape() const {
+  const auto orientation = renderer.getOrientation();
+  return orientation == GfxRenderer::LandscapeClockwise || orientation == GfxRenderer::LandscapeCounterClockwise;
+}
+
 bool MappedInputManager::mapButton(const Button button, bool (HalGPIO::*fn)(uint8_t) const) const {
   const auto sideLayout = SETTINGS.sideButtonLayout;
 

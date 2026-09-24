@@ -15,6 +15,9 @@ constexpr unsigned long GO_HOME_MS = 1000;
 constexpr unsigned long GO_BACK_OR_HOME_MS = GO_HOME_MS;
 constexpr unsigned long SKIP_HOLD_MS = 700;
 constexpr unsigned long BOOKMARK_HOLD_MS = 400;
+// Landscape "tap next, hold prev" side buttons. Shorter than SKIP_HOLD_MS: a
+// page back is cheap to undo, and the tap has to feel like a plain click.
+constexpr unsigned long LANDSCAPE_SIDE_HOLD_MS = 400;
 // Longer than BOOKMARK_HOLD_MS: a mistaken rotation costs a full section re-layout.
 constexpr unsigned long ORIENTATION_HOLD_MS = 700;
 constexpr unsigned long BOOKMARK_MESSAGE_DURATION_MS = 2500;
@@ -51,6 +54,8 @@ struct PageTurnResult {
   bool prev;
   bool next;
   bool fromTilt;
+  // prev came from a landscape side-button hold; not a chapter-skip long press.
+  bool fromSideHold;
 };
 
 inline PageTurnResult detectPageTurn(const MappedInputManager& input) {
@@ -64,14 +69,30 @@ inline PageTurnResult detectPageTurn(const MappedInputManager& input) {
     if (usePress) return input.wasPressed(button);
     return input.wasLongPressed(button, SKIP_HOLD_MS) || input.wasReleased(button);
   };
-  const bool prev =
-      tiltPrev || (pageButtonTriggered(MappedInputManager::Button::PageBack) || pageButtonTriggered(prevButton));
+  // Landscape "tap next, hold prev": either side button pages forward on release
+  // and back once held LANDSCAPE_SIDE_HOLD_MS; the hold suppresses its own
+  // release. Front buttons keep their prev/next roles in every mode.
+  const bool sideHoldMode =
+      SETTINGS.landscapeSideButtons == CrossPointSettings::LANDSCAPE_SIDE_HOLD_PREV && input.isLandscape();
+  bool sidePrev;
+  bool sideNext;
+  if (sideHoldMode) {
+    // Both calls run: each arms its own once-per-press latch.
+    const bool heldBack = input.wasLongPressed(MappedInputManager::Button::PageBack, LANDSCAPE_SIDE_HOLD_MS);
+    const bool heldForward = input.wasLongPressed(MappedInputManager::Button::PageForward, LANDSCAPE_SIDE_HOLD_MS);
+    sidePrev = heldBack || heldForward;
+    sideNext = input.wasReleased(MappedInputManager::Button::PageBack) ||
+               input.wasReleased(MappedInputManager::Button::PageForward);
+  } else {
+    sidePrev = pageButtonTriggered(MappedInputManager::Button::PageBack);
+    sideNext = pageButtonTriggered(MappedInputManager::Button::PageForward);
+  }
+  const bool prev = tiltPrev || sidePrev || pageButtonTriggered(prevButton);
   const bool powerTurn = SETTINGS.shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::PAGE_TURN &&
                          input.wasReleased(MappedInputManager::Button::Power);
-  const bool next = input.homeButtonAction() == HomeButtonAction::NextPage || tiltNext ||
-                    pageButtonTriggered(MappedInputManager::Button::PageForward) || powerTurn ||
+  const bool next = input.homeButtonAction() == HomeButtonAction::NextPage || tiltNext || sideNext || powerTurn ||
                     pageButtonTriggered(nextButton);
-  return {prev, next, tiltPrev || tiltNext};
+  return {prev, next, tiltPrev || tiltNext, sideHoldMode && sidePrev};
 }
 
 struct TouchPageTurn {

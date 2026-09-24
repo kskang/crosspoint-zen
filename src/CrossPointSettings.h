@@ -105,6 +105,14 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     SIDE_BUTTON_LAYOUT_COUNT
   };
 
+  // Side buttons while the reader is in landscape. HOLD_PREV: either side
+  // button pages forward on a tap and back on a hold.
+  enum LANDSCAPE_SIDE_BUTTONS {
+    LANDSCAPE_SIDE_AS_PORTRAIT = 0,
+    LANDSCAPE_SIDE_HOLD_PREV = 1,
+    LANDSCAPE_SIDE_BUTTONS_COUNT
+  };
+
   // Font family options (built-in fonts only; SD card fonts use sdFontFamilyName)
   enum FONT_FAMILY { NOTOSERIF = 0, NOTOSANS = 1, FONT_FAMILY_COUNT };
   static constexpr uint8_t LEGACY_OPENDYSLEXIC = 2;
@@ -285,6 +293,7 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Button layouts (front layout retained for migration only)
   uint8_t frontButtonLayout = BACK_CONFIRM_LEFT_RIGHT;
   uint8_t sideButtonLayout = PREV_NEXT;
+  uint8_t landscapeSideButtons = LANDSCAPE_SIDE_AS_PORTRAIT;
   uint8_t frontButtonFollowOrientation = 0;
   // Front button remap (logical -> hardware)
   // Used by MappedInputManager to translate logical buttons into physical front buttons.
