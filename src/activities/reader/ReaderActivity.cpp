@@ -387,18 +387,18 @@ void ReaderActivity::loop() {
   if (handleBackNavigation()) return;
 
   const auto touch = ReaderUtils::detectTouchPageTurn(renderer, mappedInput);
-  auto [prevTriggered, nextTriggered, fromTilt] = ReaderUtils::detectPageTurn(mappedInput);
+  auto [prevTriggered, nextTriggered, fromTilt, fromSideHold] = ReaderUtils::detectPageTurn(mappedInput);
   prevTriggered = prevTriggered || touch.prev;
   nextTriggered = nextTriggered || touch.next;
   if (!prevTriggered && !nextTriggered) return;
   if (handleEndOfBookPageTurn(prevTriggered, nextTriggered)) return;
 
   const unsigned long heldMs = (touch.prev || touch.next) ? touch.heldMs : mappedInput.getHeldTime();
-  const bool skip =
-      !fromTilt && SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP && heldMs >= ReaderUtils::SKIP_HOLD_MS;
+  const bool skip = !fromTilt && !fromSideHold && SETTINGS.longPressButtonBehavior == SETTINGS.CHAPTER_SKIP &&
+                    heldMs >= ReaderUtils::SKIP_HOLD_MS;
 
-  const bool changed = skip ? trackPageTurn(!prevTriggered, true, prevTriggered ? -10 : 10)
-                            : trackPageTurn(!prevTriggered);
+  const bool changed =
+      skip ? trackPageTurn(!prevTriggered, true, prevTriggered ? -10 : 10) : trackPageTurn(!prevTriggered);
   // A skip is navigation, not reading: it never counts toward session dwell.
   notePageTurn(!skip && !prevTriggered, changed);
   if (changed && (touch.prev || touch.next)) haptic_feedback::touchAction(skip);
