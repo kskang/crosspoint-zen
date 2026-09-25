@@ -1895,9 +1895,10 @@ static_assert(std::size(kAlignIds) == CrossPointSettings::PARAGRAPH_ALIGNMENT_CO
 }  // namespace
 
 bool EpubReaderActivity::usesToolbarMenu() const {
-  // Both board classes drive the same chrome: touch through the FreeInkUI tap
-  // targets, buttons through the focused-tool pill and the panel cursor.
-  return SETTINGS.readerMenuStyle == CrossPointSettings::READER_MENU_TOOLBAR;
+  // Touch boards only: the overlay keeps the reading clock running (stats pause
+  // on activity push), so button boards stay on the list menu even if a
+  // settings file carried over from a touch board says Toolbar.
+  return mappedInput.hasTouch() && SETTINGS.readerMenuStyle == CrossPointSettings::READER_MENU_TOOLBAR;
 }
 
 std::string EpubReaderActivity::currentChapterTitle() const {
