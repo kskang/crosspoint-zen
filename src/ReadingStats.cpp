@@ -4,15 +4,20 @@
 #include <I18n.h>
 #include <Logging.h>
 
+#include <algorithm>
 #include <cstring>
 
 namespace {
 constexpr char STATS_DIR[] = "/.crosspoint/reading_stats";
 constexpr char GLOBAL_PATH[] = "/.crosspoint/reading_stats/global.bin";
 constexpr char GLOBAL_BACKUP_PATH[] = "/.crosspoint/reading_stats/global.backup.bin";
-constexpr uint8_t BOOK_VERSION = 2;
+constexpr uint8_t BOOK_VERSION = 3;
 constexpr uint8_t GLOBAL_VERSION = 2;
-constexpr size_t BOOK_FILE_SIZE = 24;
+constexpr size_t BOOK_SAMPLES_OFFSET = 17;
+constexpr size_t BOOK_FILE_SIZE = BOOK_SAMPLES_OFFSET + BookReadingStats::PACE_WINDOW * sizeof(uint16_t) + 4;
+// Version 2 kept a running mean instead of the samples. Its totals still load; its pace does not.
+constexpr uint8_t LEGACY_BOOK_VERSION = 2;
+constexpr size_t LEGACY_BOOK_FILE_SIZE = 24;
 constexpr size_t GLOBAL_FILE_SIZE = 21;
 constexpr size_t PATH_BUFFER_SIZE = 64;
 
@@ -48,10 +53,14 @@ uint32_t checksum(const uint8_t* data, const size_t size) {
   return ~value;
 }
 
+bool isValidRecord(const uint8_t* data, const size_t size, const uint8_t version) {
+  return data[0] == version && readLe32(data, size - sizeof(uint32_t)) == checksum(data, size - sizeof(uint32_t));
+}
+
 template <size_t N>
 bool isValidRecord(const uint8_t (&data)[N], const uint8_t version) {
   static_assert(N >= sizeof(uint32_t) + 1);
-  return data[0] == version && readLe32(data, N - sizeof(uint32_t)) == checksum(data, N - sizeof(uint32_t));
+  return isValidRecord(data, N, version);
 }
 
 bool writeAtomically(const char* path, const uint8_t* data, const size_t size) {
@@ -102,6 +111,22 @@ bool readExact(const char* path, uint8_t (&data)[N]) {
   return file.read(data, N) == static_cast<int>(N);
 }
 
+// Returns the version of a valid book record, or 0.
+uint8_t readBookRecord(const char* path, uint8_t (&data)[BOOK_FILE_SIZE]) {
+  HalFile file;
+  if (!Storage.openFileForRead("STATS", path, file)) return 0;
+  const size_t size = file.fileSize();
+  if (size == BOOK_FILE_SIZE) {
+    return file.read(data, size) == static_cast<int>(size) && isValidRecord(data, BOOK_VERSION) ? BOOK_VERSION : 0;
+  }
+  if (size == LEGACY_BOOK_FILE_SIZE) {
+    return file.read(data, size) == static_cast<int>(size) && isValidRecord(data, size, LEGACY_BOOK_VERSION)
+               ? LEGACY_BOOK_VERSION
+               : 0;
+  }
+  return 0;
+}
+
 bool moveStatsFile(char* oldPath, const size_t oldPathSize, char* newPath, const size_t newPathSize,
                    const char* suffix) {
   if (suffix[0] != '\0') {
@@ -133,18 +158,22 @@ BookReadingStats ReadingStatsStore::loadBook(const std::string& bookPath) {
   snprintf(previousPath, sizeof(previousPath), "%s.previous", path);
   uint8_t data[BOOK_FILE_SIZE] = {};
   BookReadingStats stats;
-  if ((!readExact(path, data) || !isValidRecord(data, BOOK_VERSION)) &&
-      (!readExact(previousPath, data) || !isValidRecord(data, BOOK_VERSION))) {
-    return stats;
-  }
+  uint8_t version = readBookRecord(path, data);
+  if (version == 0) version = readBookRecord(previousPath, data);
+  if (version == 0) return stats;
   stats.totalReadingSeconds = readLe32(data, 1);
   stats.totalPagesTurned = readLe32(data, 5);
   stats.estimatedTimeLeftSeconds = readLe32(data, 9);
   stats.sessionCount = readLe16(data, 13);
-  stats.avgSecondsPerForwardPage = readLe16(data, 15);
-  stats.paceSampleCount = readLe16(data, 17);
-  stats.isCompleted = data[19] != 0;
-  stats.seedPaceTotalFromStoredAverage();
+  if (version == LEGACY_BOOK_VERSION) {
+    stats.isCompleted = data[19] != 0;
+    return stats;
+  }
+  stats.isCompleted = data[15] != 0;
+  stats.paceSampleCount = std::min<uint8_t>(data[16], BookReadingStats::PACE_WINDOW);
+  for (uint8_t i = 0; i < stats.paceSampleCount; i++) {
+    stats.paceSamples[i] = readLe16(data, BOOK_SAMPLES_OFFSET + i * sizeof(uint16_t));
+  }
   return stats;
 }
 
@@ -173,9 +202,11 @@ bool ReadingStatsStore::saveBook(const std::string& bookPath, const BookReadingS
   writeLe32(data, 5, stats.totalPagesTurned);
   writeLe32(data, 9, stats.estimatedTimeLeftSeconds);
   writeLe16(data, 13, stats.sessionCount);
-  writeLe16(data, 15, stats.avgSecondsPerForwardPage);
-  writeLe16(data, 17, stats.paceSampleCount);
-  data[19] = stats.isCompleted ? 1 : 0;
+  data[15] = stats.isCompleted ? 1 : 0;
+  data[16] = stats.paceSampleCount;
+  for (uint8_t i = 0; i < stats.paceSampleCount; i++) {
+    writeLe16(data, BOOK_SAMPLES_OFFSET + i * sizeof(uint16_t), stats.paceSamples[i]);
+  }
   writeLe32(data, BOOK_FILE_SIZE - sizeof(uint32_t), checksum(data, BOOK_FILE_SIZE - sizeof(uint32_t)));
   return writeAtomically(path, data, sizeof(data));
 }

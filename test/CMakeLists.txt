@@ -71,6 +71,7 @@ add_subdirectory(home_button)
 add_subdirectory(button_press_navigation)
 add_subdirectory(reader_orientation)
 add_subdirectory(reading_pace)
+add_subdirectory(reading_stats_store)
 add_subdirectory(page_density)
 
 add_subdirectory(inflate_stream)

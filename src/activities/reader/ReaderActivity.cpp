@@ -24,9 +24,10 @@
 namespace {
 constexpr uint32_t MIN_PAGE_DWELL_MS = 2000;
 constexpr uint32_t MAX_READING_IDLE_MS = 5 * 60 * 1000;
+// Once the pace window is full, a page left on screen counts for at most this many typical pages.
+constexpr uint32_t MAX_PAGE_TIME_PACE_MULTIPLE = 3;
 constexpr uint32_t MIN_SAVED_READING_SECONDS = 10;
 constexpr uint32_t MIN_SESSION_SECONDS = 60;
-constexpr uint16_t RECENT_PACE_SAMPLES = 50;
 }  // namespace
 
 ReaderActivity::ReaderActivity(const char* name, GfxRenderer& renderer, MappedInputManager& mappedInput,
@@ -188,8 +189,6 @@ void ReaderActivity::onResume() {
     if (statsWereReset) {
       sessionReadingMs = 0;
       committedSessionSeconds = 0;
-      recentPaceSeconds = 0;
-      recentPaceSamples = 0;
     }
   }
   pageDisplayedAtMs.store(0, std::memory_order_release);
@@ -199,22 +198,15 @@ void ReaderActivity::onResume() {
 void ReaderActivity::recordVisiblePageTime(const uint32_t nowMs) {
   const uint32_t startedAt = pageDisplayedAtMs.exchange(0, std::memory_order_acq_rel);
   if (startedAt == 0) return;
-  const uint32_t elapsedMs = nowMs - startedAt;
+  uint32_t elapsedMs = nowMs - startedAt;
   if (elapsedMs == 0 || elapsedMs > MAX_READING_IDLE_MS) return;
+  if (readingStats.paceSampleCount == BookReadingStats::PACE_WINDOW) {
+    const auto maxPageMs =
+        static_cast<uint32_t>(readingStats.secondsPerForwardPage() * 1000.0f) * MAX_PAGE_TIME_PACE_MULTIPLE;
+    elapsedMs = std::min(elapsedMs, maxPageMs);
+  }
 
   sessionReadingMs = sessionReadingMs > UINT32_MAX - elapsedMs ? UINT32_MAX : sessionReadingMs + elapsedMs;
-}
-
-void ReaderActivity::recordPaceSample(const uint32_t seconds) {
-  if (seconds == 0) return;
-  readingStats.recordForwardPageRead(seconds);
-  recentPaceSeconds += seconds;
-  recentPaceSamples++;
-  if (recentPaceSamples < RECENT_PACE_SAMPLES) return;
-
-  readingStats.restartPaceIfRecentDiverged(recentPaceSeconds, recentPaceSamples);
-  recentPaceSeconds = 0;
-  recentPaceSamples = 0;
 }
 
 float ReaderActivity::estimatedRemainingPages() {
@@ -311,7 +303,7 @@ bool ReaderActivity::trackPageTurn(const bool isForward, const bool skip, const 
     if (globalReadingStats.totalPagesTurned < UINT32_MAX) globalReadingStats.totalPagesTurned++;
     readingStatsDirty = true;
     if (!paceSampleWarmupPending && elapsedMs <= MAX_READING_IDLE_MS) {
-      recordPaceSample((elapsedMs + 500) / 1000);
+      readingStats.recordForwardPageRead((elapsedMs + 500) / 1000);
     }
   }
   paceSampleWarmupPending = false;

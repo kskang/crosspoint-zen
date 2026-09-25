@@ -23,9 +23,6 @@ class ReaderActivity : public Activity {
   std::atomic<uint32_t> pageDisplayedAtMs{0};
   uint32_t sessionReadingMs = 0;
   uint32_t committedSessionSeconds = 0;
-  // Outlives pause/resume so the window still fills when the reader opens menus often.
-  uint32_t recentPaceSeconds = 0;
-  uint16_t recentPaceSamples = 0;
   bool paceSampleWarmupPending = true;
   bool readingStatsLoaded = false;
   bool readingStatsDirty = false;
@@ -86,7 +83,6 @@ class ReaderActivity : public Activity {
   void notePageTurn(bool forward, bool succeeded);
   void flushReaderSession();
   void recordVisiblePageTime(uint32_t nowMs);
-  void recordPaceSample(uint32_t seconds);
   void updateEstimatedTimeLeft();
   void saveReadingStats(bool finishSession);
   void markBookCompleted();
