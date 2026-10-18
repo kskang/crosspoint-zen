@@ -5,6 +5,7 @@
 #include <Logging.h>
 
 #include "ClippingStore.h"
+#include "ReadingStats.h"
 #include "util/BookCacheUtils.h"
 #include "util/TaskWatchdog.h"
 
@@ -566,6 +567,7 @@ void WebDAVHandler::handleMove(WebServer& s) {
   const bool success = ClippingStore::moveBook(srcPath.c_str(), dstPath.c_str());
 
   if (success) {
+    if (!ReadingStatsStore::moveBook(srcPath.c_str(), dstPath.c_str())) LOG_ERR("DAV", "Failed to move reading stats");
     s.send(dstExists ? 204 : 201);
   } else {
     s.send(500, "text/plain", "Move failed");

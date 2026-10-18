@@ -27,11 +27,8 @@ constexpr StrId TAB_NAME_IDS[] = {StrId::STR_FONT, StrId::STR_SIZE, StrId::STR_L
 constexpr StrId LAYOUT_ROW_NAME_IDS[] = {
     StrId::STR_LINE_SPACING,          StrId::STR_WORD_SPACING, StrId::STR_CHARACTER_SPACING, StrId::STR_EXTRA_SPACING,
     StrId::STR_PARAGRAPH_INDENTATION, StrId::STR_ALIGNMENT,    StrId::STR_CHARACTER_WRAP,    StrId::STR_SCREEN_MARGIN};
-constexpr StrId STYLE_ROW_NAME_IDS[] = {StrId::STR_FOCUS_READING,
-#ifndef OMIT_HYPHENATION
-                                        StrId::STR_HYPHENATION,
-#endif
-                                        StrId::STR_EMBEDDED_STYLE, StrId::STR_TEXT_AA};
+constexpr StrId STYLE_ROW_NAME_IDS[] = {StrId::STR_FOCUS_READING, StrId::STR_HYPHENATION, StrId::STR_EMBEDDED_STYLE,
+                                        StrId::STR_TEXT_AA};
 
 int findCurrentFontIndex(const SdCardFontRegistry* registry, const char* sdFontFamilyName, uint8_t fontFamily) {
   if (sdFontFamilyName[0] != '\0' && registry) {
@@ -498,11 +495,9 @@ void TextSettingsActivity::confirmStyleRow(int row) {
     case StyleRow::FocusReading:
       SETTINGS.focusReadingEnabled = !SETTINGS.focusReadingEnabled;
       break;
-#ifndef OMIT_HYPHENATION
     case StyleRow::Hyphenation:
       SETTINGS.hyphenationEnabled = !SETTINGS.hyphenationEnabled;
       break;
-#endif
     case StyleRow::EmbeddedStyle:
       SETTINGS.embeddedStyle = !SETTINGS.embeddedStyle;
       break;
@@ -521,10 +516,8 @@ bool TextSettingsActivity::styleRowChecked(int row) const {
   switch (static_cast<StyleRow>(row)) {
     case StyleRow::FocusReading:
       return SETTINGS.focusReadingEnabled;
-#ifndef OMIT_HYPHENATION
     case StyleRow::Hyphenation:
       return SETTINGS.hyphenationEnabled;
-#endif
     case StyleRow::EmbeddedStyle:
       return SETTINGS.embeddedStyle;
     case StyleRow::AntiAliasing:
@@ -540,11 +533,7 @@ bool TextSettingsActivity::styleRowChecked(int row) const {
 bool TextSettingsActivity::focusedRowHasNoPreview() const {
   if (ringPos() == 0 || tab_ != Tab::Style) return false;
   const StyleRow row = static_cast<StyleRow>(ringPos() - 1);
-#ifdef OMIT_HYPHENATION
-  return row == StyleRow::EmbeddedStyle || row == StyleRow::AntiAliasing;
-#else
   return row == StyleRow::Hyphenation || row == StyleRow::EmbeddedStyle || row == StyleRow::AntiAliasing;
-#endif
 }
 
 void TextSettingsActivity::switchTab(const int direction) {

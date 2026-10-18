@@ -22,9 +22,7 @@
 #include "home/FileBrowserActivity.h"
 #include "home/HomeActivity.h"
 #include "library/LibraryListActivity.h"
-#ifndef OMIT_WEB_SERVER
 #include "network/CrossPointWebServerActivity.h"
-#endif
 #include "network/UsbDriveActivity.h"
 #include "plugins/PluginCatalogActivity.h"
 #include "reader/ReaderActivity.h"
@@ -266,21 +264,13 @@ void ActivityManager::replaceActivity(std::unique_ptr<Activity>&& newActivity) {
 }
 
 void ActivityManager::goToFileTransfer() {
-#ifndef OMIT_WEB_SERVER
   replaceActivity(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput));
-#else
-  goHome();
-#endif
 }
 
 void ActivityManager::goToJoinNetwork() {
-#ifndef OMIT_WEB_SERVER
   // Post heap-defrag reboot: enter the web-server activity straight in Join
   // Network mode (skips mode selection, does not reboot again).
   replaceActivity(std::make_unique<CrossPointWebServerActivity>(renderer, mappedInput, /*startInJoinNetwork=*/true));
-#else
-  goHome();
-#endif
 }
 
 void ActivityManager::goToUsbDrive() {
@@ -382,10 +372,8 @@ void ActivityManager::goHome(HomeMenuItem initialMenuItem, bool cleanInitialRefr
       initialMenuItem = HomeMenuItem::READING_STATS;
     } else if (activityName == "OpdsBookBrowser" || activityName == "PluginCatalog") {
       initialMenuItem = HomeMenuItem::OPDS_BROWSER;
-#ifndef OMIT_WEB_SERVER
     } else if (activityName == "CrossPointWebServer") {
       initialMenuItem = HomeMenuItem::FILE_TRANSFER;
-#endif
     } else if (activityName == "Settings" || activityName == "SettingsList") {
       initialMenuItem = HomeMenuItem::SETTINGS_MENU;
     }

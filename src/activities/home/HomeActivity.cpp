@@ -28,11 +28,7 @@
 #include "fontIds.h"
 
 int HomeActivity::getMenuItemCount() const {
-#ifdef OMIT_WEB_SERVER
-  int count = 4;  // File Browser, Library, Reading Stats, Settings
-#else
   int count = 5;  // File Browser, Library, Reading Stats, File transfer, Settings
-#endif
   if (!recentBooks.empty()) {
     count += recentBooks.size();
   }
@@ -338,11 +334,9 @@ void HomeActivity::loop() {
       case HomeMenuItem::OPDS_BROWSER:  // the library slot
         hasPlugins ? onPluginsOpen() : onOpdsBrowserOpen();
         break;
-#ifndef OMIT_WEB_SERVER
       case HomeMenuItem::FILE_TRANSFER:
         onFileTransferOpen();
         break;
-#endif
       case HomeMenuItem::SETTINGS_MENU:
         onSettingsOpen();
         break;
@@ -543,15 +537,9 @@ void HomeActivity::render(RenderLock&&) {
                           std::bind(&HomeActivity::storeCoverBuffer, this));
 
   // Build menu items dynamically
-#ifdef OMIT_WEB_SERVER
-  std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_LIBRARY), tr(STR_READING_STATS),
-                                        tr(STR_SETTINGS_TITLE)};
-  std::vector<UIIcon> menuIcons = {Folder, Library, Book, Settings};
-#else
   std::vector<const char*> menuItems = {tr(STR_BROWSE_FILES), tr(STR_LIBRARY), tr(STR_READING_STATS),
                                         tr(STR_FILE_TRANSFER), tr(STR_SETTINGS_TITLE)};
   std::vector<UIIcon> menuIcons = {Folder, Library, Book, Transfer, Settings};
-#endif
 
   if (hasLibrarySlot()) {
     menuItems.insert(menuItems.begin() + 3, hasPlugins ? tr(STR_PLUGINS) : tr(STR_OPDS_BROWSER));
@@ -606,9 +594,7 @@ void HomeActivity::onReadingStatsOpen() {
 
 void HomeActivity::onSettingsOpen() { activityManager.goToSettings(); }
 
-#ifndef OMIT_WEB_SERVER
 void HomeActivity::onFileTransferOpen() { activityManager.goToFileTransfer(); }
-#endif
 
 void HomeActivity::onOpdsBrowserOpen() { activityManager.goToBrowser(); }
 

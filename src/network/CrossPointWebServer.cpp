@@ -36,6 +36,7 @@
 #include "FontInstaller.h"
 #include "OpdsServerStore.h"
 #include "ProtectedPaths.h"
+#include "ReadingStats.h"
 #include "SdCardFontSystem.h"
 #include "SettingsList.h"
 #include "WebDAVHandler.h"
@@ -1118,6 +1119,7 @@ void CrossPointWebServer::handleRename() const {
 
   if (success) {
     LOG_DBG("WEB", "Renamed file: %s -> %s", itemPath.c_str(), newPath.c_str());
+    if (!ReadingStatsStore::moveBook(itemPath.c_str(), newPath.c_str())) LOG_ERR("WEB", "Failed to move reading stats");
     server->send(200, "text/plain", "Renamed successfully");
   } else {
     LOG_ERR("WEB", "Failed to rename file: %s -> %s", itemPath.c_str(), newPath.c_str());
@@ -1216,6 +1218,7 @@ void CrossPointWebServer::handleMove() const {
 
   if (success) {
     LOG_DBG("WEB", "Moved file: %s -> %s", itemPath.c_str(), newPath.c_str());
+    if (!ReadingStatsStore::moveBook(itemPath.c_str(), newPath.c_str())) LOG_ERR("WEB", "Failed to move reading stats");
     server->send(200, "text/plain", "Moved successfully");
   } else {
     LOG_ERR("WEB", "Failed to move file: %s -> %s", itemPath.c_str(), newPath.c_str());

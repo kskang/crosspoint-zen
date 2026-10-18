@@ -50,10 +50,8 @@ class HomeActivity final : public Activity {
     ++i;
     if (item == HomeMenuItem::OPDS_BROWSER) return hasOpdsUrl ? i : 0;
     if (hasOpdsUrl) ++i;
-#ifndef OMIT_WEB_SERVER
     if (item == HomeMenuItem::FILE_TRANSFER) return i;
     ++i;
-#endif
     if (item == HomeMenuItem::SETTINGS_MENU) return i;
     return 0;
   }
@@ -65,9 +63,7 @@ class HomeActivity final : public Activity {
     if (idx == i++) return HomeMenuItem::LIBRARY;
     if (idx == i++) return HomeMenuItem::READING_STATS;
     if (hasOpdsUrl && idx == i++) return HomeMenuItem::OPDS_BROWSER;
-#ifndef OMIT_WEB_SERVER
     if (idx == i++) return HomeMenuItem::FILE_TRANSFER;
-#endif
     if (idx == i) return HomeMenuItem::SETTINGS_MENU;
     return HomeMenuItem::NONE;
   }
@@ -76,9 +72,7 @@ class HomeActivity final : public Activity {
   void onLibraryOpen();
   void onReadingStatsOpen();
   void onSettingsOpen();
-#ifndef OMIT_WEB_SERVER
   void onFileTransferOpen();
-#endif
   void onOpdsBrowserOpen();
   void onPluginsOpen();
 
