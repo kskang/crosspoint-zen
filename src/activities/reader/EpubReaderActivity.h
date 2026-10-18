@@ -115,6 +115,9 @@ class EpubReaderActivity final : public ReaderActivity {
   static constexpr int MAX_FOOTNOTE_DEPTH = 3;
   SavedPosition savedPositions[MAX_FOOTNOTE_DEPTH] = {};
   int footnoteDepth = 0;
+  // Spine the newest link landed in, or -1 once unknown (after Back, or a stack restored from
+  // disk). Reading stats treat only pages in that spine as footnote pages.
+  int footnoteTargetSpine = -1;
   // The back-stack outlives the reader (sleep, home) in links.bin so Back
   // still returns to where a followed link was tapped.
   void saveLinkStack() const;
@@ -235,7 +238,9 @@ class EpubReaderActivity final : public ReaderActivity {
   std::string getBookAuthor() const override { return epub ? epub->getAuthor() : ""; }
   std::string getBookThumbBmpPath() const override { return epub ? epub->getThumbBmpPath() : ""; }
   int getProgressBasisPoints() const override;
-  bool shouldCountForwardPageTurn() const override { return footnoteDepth == 0; }
+  bool shouldCountForwardPageTurn() const override {
+    return footnoteDepth == 0 || currentSpineIndex != footnoteTargetSpine;
+  }
   void renderBook() override;
   void onEndOfBookRendered() override;
 

@@ -1448,7 +1448,8 @@ bool EpubReaderActivity::pageTurn(bool isForwardTurn) {
       lastPageTurnTime = millis();
       return true;
     } else {
-      if (footnoteDepth > 0) {
+      // The end of a chapter reached through a link returns there instead of ending the book.
+      if (footnoteDepth > 0 && currentSpineIndex == footnoteTargetSpine) {
         restoreSavedPosition();
         lastPageTurnTime = millis();
         return true;
@@ -1589,12 +1590,14 @@ bool EpubReaderActivity::remoteShortcut(const bool readerMenu) {
 bool EpubReaderActivity::isAtEndOfBook() const { return epub && currentSpineIndex >= epub->getSpineItemsCount(); }
 
 float EpubReaderActivity::estimatedRemainingPages() {
+  if (isAtEndOfBook()) return 0.0f;
+  // Unknown while no chapter is laid out (child screens release it, chapter turns rebuild it).
   const int totalPages = section ? section->estimatedTotalPages() : 0;
-  if (!epub || !section || totalPages <= 0) return 0.0f;
+  if (!epub || !section || totalPages <= 0) return -1.0f;
   const size_t bookSize = epub->getBookSize();
   const size_t previousSize = currentSpineIndex > 0 ? epub->getCumulativeSpineItemSize(currentSpineIndex - 1) : 0;
   const size_t cumulativeSize = epub->getCumulativeSpineItemSize(currentSpineIndex);
-  if (bookSize == 0 || cumulativeSize <= previousSize) return 0.0f;
+  if (bookSize == 0 || cumulativeSize <= previousSize) return -1.0f;
 
   const float chapterSize = static_cast<float>(cumulativeSize - previousSize);
   const float completedChapter =
@@ -3255,6 +3258,7 @@ void EpubReaderActivity::navigateToHref(const std::string& hrefStr, const bool s
     const int page = section ? section->currentPage : nextPageNumber;
     savedPositions[footnoteDepth] = {currentSpineIndex, page};
     footnoteDepth++;
+    footnoteTargetSpine = targetSpineIndex;
     LOG_DBG("ERS", "Saved position [%d]: spine %d, page %d", footnoteDepth, currentSpineIndex, page);
   }
   recordVisiblePageTime(millis());
@@ -3323,6 +3327,7 @@ void EpubReaderActivity::restoreSavedPosition() {
   recordVisiblePageTime(millis());
   paceSampleWarmupPending = true;
   footnoteDepth--;
+  footnoteTargetSpine = -1;
   const auto& pos = savedPositions[footnoteDepth];
   LOG_DBG("ERS", "Restoring position [%d]: spine %d, page %d", footnoteDepth, pos.spineIndex, pos.pageNumber);
 

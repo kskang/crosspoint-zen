@@ -64,6 +64,7 @@ class ReaderActivity : public Activity {
   virtual bool remoteShortcut(bool /*readerMenu*/) { return false; }
   virtual bool isAtEndOfBook() const = 0;
   virtual bool shouldCountForwardPageTurn() const { return true; }
+  // Pages left in the book: 0 at the end, negative when not computable right now.
   virtual float estimatedRemainingPages();
   virtual void onReturnFromEndOfBook() {}
 

@@ -138,7 +138,11 @@ void ReaderActivity::onExit() {
   endOfBookOptionsReady.store(false, std::memory_order_release);
 }
 
-void ReaderActivity::prepareForSleep() { flushReaderSession(); }
+void ReaderActivity::prepareForSleep() {
+  // Sleep-time plugin delivery (Wi-Fi, drain) comes next and is not reading.
+  recordVisiblePageTime(millis());
+  flushReaderSession();
+}
 
 void ReaderActivity::flushReaderSession() {
   if (!readerSession.isEmitWorthy() || !pluginevents::anySubscriber(pluginevents::Event::ReaderSession)) {
@@ -211,7 +215,8 @@ void ReaderActivity::recordVisiblePageTime(const uint32_t nowMs) {
 
 float ReaderActivity::estimatedRemainingPages() {
   const ScreenshotInfo info = getScreenshotInfo();
-  if (info.totalPages <= 0 || info.currentPage <= 0 || info.currentPage >= info.totalPages) return 0.0f;
+  if (info.totalPages <= 0 || info.currentPage <= 0) return -1.0f;
+  if (info.currentPage >= info.totalPages) return 0.0f;
   return static_cast<float>(info.totalPages - info.currentPage);
 }
 
@@ -224,7 +229,8 @@ void ReaderActivity::updateEstimatedTimeLeft() {
     return;
   }
   const float remainingPages = estimatedRemainingPages();
-  if (remainingPages <= 0.0f) {
+  if (remainingPages < 0.0f) return;  // not computable right now: keep the last estimate
+  if (remainingPages == 0.0f) {
     readingStats.estimatedTimeLeftSeconds = 0;
     if (previousEstimate != 0) readingStatsDirty = true;
     return;
