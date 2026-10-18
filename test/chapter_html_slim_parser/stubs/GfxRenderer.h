@@ -121,6 +121,8 @@ class GfxRenderer {
     if (includeSpace) ensureSdCardFontReady(fontId, " ", mask);
     if (includeHyphen) ensureSdCardFontReady(fontId, "-", mask);
   }
+  using TextGetter = const char* (*)(const void* ctx, uint32_t index);
+  void ensureFallbackFontReady(int, TextGetter, const void*, uint32_t, uint8_t = 0x0F) const {}
 
  private:
   FontVariantProvider fontVariantProvider_;

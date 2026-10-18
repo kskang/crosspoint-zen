@@ -358,8 +358,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   // Focus Reading - emphasizes the first part of words with bold
   uint8_t focusReadingEnabled = 0;
   uint8_t readerMenuStyle = READER_MENU_LIST;
-  // SD card font family name (empty = use built-in fontFamily)
-  char sdFontFamilyName[32] = "";
+  // SD card font family name (empty = use built-in fontFamily). Defaults to KoPubBatang, the
+  // Korean reader font; SdCardFontSystem::begin() clears it when the card lacks that family.
+  char sdFontFamilyName[32] = "KoPubBatang";
   // Dictionary folder name under /dictionaries (empty = no dictionary)
   char dictionaryName[32] = "";
   // Master switch for all SD-card plugin discovery/execution. New installs keep
@@ -422,6 +423,9 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
   using SdFontIdResolver = int (*)(void* ctx, const char* familyName, uint8_t fontSize);
   SdFontIdResolver sdFontIdResolver = nullptr;
   void* sdFontResolverCtx = nullptr;
+  // Font that fills glyphs the reader font lacks, or 0. Shares sdFontResolverCtx.
+  using FallbackFontIdResolver = int (*)(void* ctx, int fontId);
+  FallbackFontIdResolver fallbackFontIdResolver = nullptr;
 
   uint16_t getPowerButtonDuration() const {
     return (shortPwrBtn == CrossPointSettings::SHORT_PWRBTN::SLEEP) ? 10 : 400;

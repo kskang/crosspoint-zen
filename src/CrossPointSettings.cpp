@@ -255,9 +255,9 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
       !doc["longPressMenuFunction"].isNull()) {
     // Indexed by LONG_PRESS_MENU_FUNCTION. The rotations have no home-button action.
     static constexpr HomeButtonAction LEGACY[] = {
-        HomeButtonAction::Sync,   HomeButtonAction::Ignore, HomeButtonAction::Bookmark,   HomeButtonAction::Dictionary,
-        HomeButtonAction::Ignore, HomeButtonAction::Ignore, HomeButtonAction::Ignore,     HomeButtonAction::ReaderMenu,
-        HomeButtonAction::CreateClipping};
+        HomeButtonAction::Sync,       HomeButtonAction::Ignore,     HomeButtonAction::Bookmark,
+        HomeButtonAction::Dictionary, HomeButtonAction::Ignore,     HomeButtonAction::Ignore,
+        HomeButtonAction::Ignore,     HomeButtonAction::ReaderMenu, HomeButtonAction::CreateClipping};
     static_assert(std::size(LEGACY) == LP_MENU_CREATE_CLIPPING + 1, "one entry per long-press menu value");
     if (s.longPressMenuFunction < sizeof(LEGACY) / sizeof(LEGACY[0])) {
       s.homeButtonLongPressAction = static_cast<uint8_t>(LEGACY[s.longPressMenuFunction]);
@@ -272,7 +272,8 @@ bool CrossPointSettings::fromJson(JsonVariantConst doc) {
   if (sdFontFamilyName[0] == '\0') {
     switch (storedFontFamily) {
       case LEGACY_NOTOSERIF:
-        copyToField(sdFontFamilyName, "NotoSerif", sizeof(sdFontFamilyName));
+        // crosspoint-zen wired its built-in KoPub to this slot; KoPub now lives on the SD card.
+        copyToField(sdFontFamilyName, "KoPubBatang", sizeof(sdFontFamilyName));
         break;
       case LEGACY_OPENDYSLEXIC:
         copyToField(sdFontFamilyName, "OpenDyslexic", sizeof(sdFontFamilyName));
@@ -339,6 +340,7 @@ ReaderRenderSpec CrossPointSettings::readerRenderSpec(const uint16_t viewportWid
   spec.imageRendering = imageRendering;
   spec.focusReadingEnabled = focusReadingEnabled != 0;
   spec.characterWrap = characterWrap != 0;
+  spec.fallbackFontId = fallbackFontIdResolver ? fallbackFontIdResolver(sdFontResolverCtx, spec.fontId) : 0;
   return spec;
 }
 

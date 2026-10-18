@@ -25,6 +25,9 @@ struct ReaderRenderSpec {
   uint8_t imageRendering = 0;
   bool focusReadingEnabled = false;
   bool characterWrap = true;
+  // Font that draws the glyphs fontId lacks (the SD Korean fallback), or 0. Words using it are
+  // measured with it, so a cached layout is valid only for the same fallback.
+  int fallbackFontId = 0;
 };
 
 // Stable signature for clipping anchors. Page-local word ordinals are valid
@@ -48,5 +51,6 @@ inline uint32_t readerRenderSpecSignature(const ReaderRenderSpec& spec) {
   mix(spec.imageRendering);
   mix(spec.focusReadingEnabled);
   mix(spec.characterWrap);
+  mix(static_cast<uint32_t>(spec.fallbackFontId));
   return signature == 0 ? 1 : signature;
 }

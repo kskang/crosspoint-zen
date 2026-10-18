@@ -198,6 +198,10 @@ class GfxRenderer {
   // setFallbackFont maps a primary UI font id to an SD font id of the same size.
   void setFallbackFont(int primaryFontId, int fallbackFontId) { fallbackFontMap_[primaryFontId] = fallbackFontId; }
   void clearFallbackFonts() { fallbackFontMap_.clear(); }
+  int getFallbackFontId(const int fontId) const {
+    const auto it = fallbackFontMap_.find(fontId);
+    return it == fallbackFontMap_.end() ? 0 : it->second;
+  }
 
   void setFontVariantProvider(const FontVariantProvider& provider) { fontVariantProvider_ = provider; }
   int resolveFontVariant(const int fontId, const float scale) const {
@@ -219,6 +223,11 @@ class GfxRenderer {
   void ensureSdCardFontReady(int fontId, const char* const* segments, const size_t* segmentLens, size_t segmentCount,
                              bool includeSpace, bool includeHyphen, uint8_t styleMask = 0x0F,
                              bool includeSmallCaps = false) const;
+  // Layout counterpart for a non-SD font with an SD fallback: batch-reads advances for the words
+  // that will measure in the fallback, so they don't fault glyphs in one SD read at a time.
+  // No-op when the font has no SD fallback or no word needs it.
+  void ensureFallbackFontReady(int fontId, TextGetter getter, const void* ctx, uint32_t textCount,
+                               uint8_t styleMask = 0x0F) const;
 
   // Orientation control (affects logical width/height and coordinate transforms)
   void setOrientation(const Orientation o) { orientation = o; }

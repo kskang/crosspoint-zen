@@ -90,6 +90,12 @@ if (parsedSize != fileSize) {
 
 ## `section.bin`
 
+### Version 62
+
+The section header adds a signed 32-bit `fallbackFontId` after `characterWrap`:
+the font that draws glyphs the reader font lacks (the SD Korean fallback), or 0.
+It participates in cache validation, since words drawn with it are measured with it.
+
 ### Version 61
 
 The section header adds `characterWrap` after `wordSpacingPercent`; it
@@ -320,7 +326,7 @@ import std.mem;
 import std.string;
 import std.core;
 
-#define EXPECTED_VERSION 61
+#define EXPECTED_VERSION 62
 #define MAX_STRING_LENGTH 65535
 #define FOOTNOTE_NUMBER_LEN 32
 #define FOOTNOTE_HREF_LEN 256
@@ -525,6 +531,7 @@ struct SectionBin {
     s8 characterSpacing;
     u8 wordSpacingPercent;
     bool characterWrap;
+    s32 fallbackFontId;
 
     u16 pageCount;
     u32 pageLutOffset;

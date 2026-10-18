@@ -70,7 +70,8 @@ namespace {
 // v59: Preserve stored CSS styles during low-heap layout.
 // v60: Text running into a block or heading start stays in its own paragraph.
 // v61: characterWrap in the header for cache validation.
-constexpr uint8_t SECTION_FILE_VERSION = 61;
+// v62: fallbackFontId in the header for cache validation.
+constexpr uint8_t SECTION_FILE_VERSION = 62;
 // Written into the version field while a build is in progress; patched to
 // SECTION_FILE_VERSION only when the build is finalized. An abandoned /
 // crash-interrupted .bin therefore carries version 0, which loadSectionFile rejects
@@ -92,7 +93,7 @@ constexpr uint32_t HEADER_SIZE = sizeof(uint8_t) + sizeof(int) + sizeof(float) +
                                  sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint16_t) + sizeof(bool) + sizeof(bool) +
                                  sizeof(uint8_t) + sizeof(bool) + sizeof(uint32_t) + sizeof(uint32_t) +
                                  sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(int8_t) +
-                                 sizeof(uint8_t) + sizeof(uint8_t) + sizeof(bool);
+                                 sizeof(uint8_t) + sizeof(uint8_t) + sizeof(bool) + sizeof(int);
 }  // namespace
 
 // Out-of-line so the unique_ptr<ChapterHtmlSlimParser> in BuildContext can be
@@ -135,14 +136,14 @@ void Section::writeSectionFileHeader(const ReaderRenderSpec& spec) {
     LOG_DBG("SCT", "File not open for writing header");
     return;
   }
-  static_assert(HEADER_SIZE == sizeof(SECTION_FILE_VERSION) + sizeof(spec.fontId) + sizeof(spec.lineCompression) +
-                                   sizeof(spec.extraParagraphSpacing) + sizeof(spec.paragraphIndentSpaces) +
-                                   sizeof(spec.paragraphAlignment) + sizeof(spec.viewportWidth) +
-                                   sizeof(spec.viewportHeight) + sizeof(pageCount) + sizeof(spec.hyphenationEnabled) +
-                                   sizeof(spec.embeddedStyle) + sizeof(spec.imageRendering) +
-                                   sizeof(spec.focusReadingEnabled) + sizeof(spec.characterSpacing) +
-                                   sizeof(spec.wordSpacingPercent) + sizeof(spec.characterWrap) + sizeof(uint32_t) +
-                                   sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t),
+  static_assert(HEADER_SIZE ==
+                    sizeof(SECTION_FILE_VERSION) + sizeof(spec.fontId) + sizeof(spec.lineCompression) +
+                        sizeof(spec.extraParagraphSpacing) + sizeof(spec.paragraphIndentSpaces) +
+                        sizeof(spec.paragraphAlignment) + sizeof(spec.viewportWidth) + sizeof(spec.viewportHeight) +
+                        sizeof(pageCount) + sizeof(spec.hyphenationEnabled) + sizeof(spec.embeddedStyle) +
+                        sizeof(spec.imageRendering) + sizeof(spec.focusReadingEnabled) + sizeof(spec.characterSpacing) +
+                        sizeof(spec.wordSpacingPercent) + sizeof(spec.characterWrap) + sizeof(spec.fallbackFontId) +
+                        sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t) + sizeof(uint32_t),
                 "Header size mismatch");
   // Written as the incomplete sentinel; finalizeBuild() patches it to
   // SECTION_FILE_VERSION as the last step, committing the file.
@@ -161,6 +162,7 @@ void Section::writeSectionFileHeader(const ReaderRenderSpec& spec) {
   serialization::writePod(file, spec.characterSpacing);
   serialization::writePod(file, spec.wordSpacingPercent);
   serialization::writePod(file, spec.characterWrap);
+  serialization::writePod(file, spec.fallbackFontId);
   serialization::writePod(file, pageCount);  // Placeholder for page count (will be initially 0, patched later)
   serialization::writePod(file, static_cast<uint32_t>(0));  // Placeholder for LUT offset (patched later)
   serialization::writePod(file, static_cast<uint32_t>(0));  // Placeholder for anchor map offset (patched later)
@@ -201,6 +203,7 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
     int8_t fileCharacterSpacing;
     uint8_t fileWordSpacingPercent;
     bool fileCharacterWrap;
+    int fileFallbackFontId;
     serialization::readPod(file, fileFontId);
     serialization::readPod(file, fileLineCompression);
     serialization::readPod(file, fileExtraParagraphSpacing);
@@ -215,6 +218,7 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
     serialization::readPod(file, fileCharacterSpacing);
     serialization::readPod(file, fileWordSpacingPercent);
     serialization::readPod(file, fileCharacterWrap);
+    serialization::readPod(file, fileFallbackFontId);
 
     if (spec.fontId != fileFontId || spec.lineCompression != fileLineCompression ||
         spec.extraParagraphSpacing != fileExtraParagraphSpacing ||
@@ -223,7 +227,7 @@ bool Section::loadSectionFile(const ReaderRenderSpec& spec) {
         spec.hyphenationEnabled != fileHyphenationEnabled || spec.embeddedStyle != fileEmbeddedStyle ||
         spec.imageRendering != fileImageRendering || spec.focusReadingEnabled != fileFocusReadingEnabled ||
         spec.characterSpacing != fileCharacterSpacing || spec.wordSpacingPercent != fileWordSpacingPercent ||
-        spec.characterWrap != fileCharacterWrap) {
+        spec.characterWrap != fileCharacterWrap || spec.fallbackFontId != fileFallbackFontId) {
       file.close();
       LOG_ERR("SCT", "Deserialization failed: Parameters do not match");
       clearCache();

@@ -167,6 +167,43 @@ void GfxRenderer::ensureSdCardFontReady(const int fontId, const char* const* seg
   // and the page is batch-warmed by the render scan (see the other overload).
 }
 
+void GfxRenderer::ensureFallbackFontReady(const int fontId, const TextGetter getter, const void* ctx,
+                                          const uint32_t textCount, const uint8_t styleMask) const {
+  const auto fbIt = fallbackFontMap_.find(fontId);
+  if (getter == nullptr || fbIt == fallbackFontMap_.end()) return;
+  const auto sdIt = sdCardFonts_.find(fbIt->second);
+  if (sdIt == sdCardFonts_.end()) return;
+  const auto redirects = [&](const char* word) {
+    return word != nullptr && resolveTextFontId(fontId, word, EpdFontFamily::REGULAR) == fbIt->second;
+  };
+  uint32_t first = 0;
+  while (first < textCount && !redirects(getter(ctx, first))) first++;
+  if (first == textCount) return;
+
+  // Pointers into the caller's words, one paragraph at most. Without them the words fault their
+  // glyphs in one SD read at a time, so a failed allocation only costs speed.
+  const uint32_t capacity = textCount - first;
+  auto words = makeUniqueNoThrow<const char*[]>(capacity);
+  auto lengths = makeUniqueNoThrow<size_t[]>(capacity);
+  if (!words || !lengths) {
+    LOG_ERR("GFX", "ensureFallbackFontReady: OOM for %u words", static_cast<unsigned>(capacity));
+    return;
+  }
+  size_t count = 0;
+  for (uint32_t i = first; i < textCount; i++) {
+    const char* word = getter(ctx, i);
+    if (i != first && !redirects(word)) continue;
+    words[count] = word;
+    lengths[count] = strlen(word) + 1;
+    count++;
+  }
+  const int missed = sdIt->second->buildAdvanceTablePacked(words.get(), lengths.get(), count, /*includeSpace=*/false,
+                                                           /*includeHyphen=*/false, styleMask);
+  if (missed > 0) {
+    LOG_DBG("GFX", "ensureFallbackFontReady: %d glyph(s) not found", missed);
+  }
+}
+
 void GfxRenderer::begin() {
   frameBuffer = display.getFrameBuffer();
   if (!frameBuffer) {

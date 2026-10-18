@@ -58,6 +58,9 @@ class SdCardFontSystem {
   void refreshIfDirty() {
     if (registryDirty_.exchange(false, std::memory_order_acquire)) {
       registry_.discover();
+      // A replaced Korean font file must not be read through the old header; ensureLoaded()
+      // reloads it on the render path.
+      koreanFontStale_.store(true, std::memory_order_release);
     }
   }
 
@@ -69,6 +72,20 @@ class SdCardFontSystem {
   // family is loaded. Safe to call repeatedly (sizes already loaded are
   // reused).
   void setupUiFallbacks(GfxRenderer& renderer);
+
+  // --- Korean fallback --------------------------------------------------------
+  // Korean is read from the SD KoPubBatang family to save flash. A reader font missing Hangul or
+  // Hanja (the Latin built-ins, or an SD family without them) and the UI fonts fall back to
+  // that family at the reader size. A reader family with both keeps the upstream UI fallbacks
+  // instead. Call after every reader-font change.
+  void installFallbacks(GfxRenderer& renderer);
+  // Loads the Korean family at the size nearest pointSize, reusing the loaded font when it
+  // matches. Returns false when the card has no such family or loading failed.
+  bool loadKoreanFont(GfxRenderer& renderer, uint8_t pointSize);
+  void unloadKoreanFont(GfxRenderer& renderer);
+  std::unique_ptr<SdCardFont> koreanFont_;
+  int koreanFontId_ = 0;
+  std::atomic<bool> koreanFontStale_{false};
 
 #if CROSSPOINT_VECTOR_FONTS
   // --- Vector (.ttf/.otf) font path (FreeInkFont via TtfEpdFont) -------------

@@ -951,6 +951,17 @@ void ParsedText::layoutAndExtractLines(const GfxRenderer& renderer, const int fo
     }
   }
 
+  // Words in scripts a font lacks (Korean in the Latin built-ins, Hanja in an SD family without
+  // it) measure in its SD fallback; warm their advances like the SD fonts above.
+  for (size_t i = 0; i < paragraphFontCount; ++i) {
+    uint8_t styleMask = 0;
+    for (auto style : wordStyles) styleMask |= static_cast<uint8_t>(1u << (static_cast<uint8_t>(style) & 0x03));
+    renderer.ensureFallbackFontReady(
+        paragraphFonts[i],
+        [](const void* ctx, const uint32_t index) { return static_cast<const ParsedText*>(ctx)->wordAt(index).data(); },
+        this, static_cast<uint32_t>(words.size()), styleMask != 0 ? styleMask : 0x01);
+  }
+
   const int pageWidth = viewportWidth;
   auto wordWidths = calculateWordWidths(renderer, fontId);
 

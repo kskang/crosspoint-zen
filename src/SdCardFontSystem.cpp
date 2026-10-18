@@ -4,6 +4,7 @@
 #include <HalStorage.h>
 #include <Logging.h>
 #include <Memory.h>
+#include <SdCardFont.h>
 #include <TtfEpdFont.h>
 #include <esp_heap_caps.h>
 
@@ -68,15 +69,21 @@ constexpr UiFontSize kUiFontSizes[] = {
     {UI_12_FONT_ID, 12},
 };
 
-// Built-in KoPub carries hangul + 교육용 한자. Route any font that is missing
-// a CJK codepoint (SD NotoSerifKR, Pretendard UI) to that face.
-void installKoPubHanjaFallback(GfxRenderer& renderer, const int extraPrimaryId = 0) {
-  renderer.setFallbackFont(SMALL_FONT_ID, NOTOSANS_14_FONT_ID);
-  renderer.setFallbackFont(UI_10_FONT_ID, NOTOSANS_14_FONT_ID);
-  renderer.setFallbackFont(UI_12_FONT_ID, NOTOSANS_14_FONT_ID);
-  if (extraPrimaryId != 0) {
-    renderer.setFallbackFont(extraPrimaryId, NOTOSANS_14_FONT_ID);
-  }
+// SD family that supplies Hangul and Hanja to fonts without them: the built-in reader fonts
+// (Latin only), the UI fonts (no Hanja), and SD families without Hanja.
+constexpr char KOREAN_FAMILY_NAME[] = "KoPubBatang";
+constexpr uint32_t HANJA_PROBE_CODEPOINT = 0x4E00;   // 一
+constexpr uint32_t HANGUL_PROBE_CODEPOINT = 0xAC00;  // 가
+constexpr int BUILTIN_READER_FONT_IDS[] = {NOTOSANS_12_FONT_ID, NOTOSANS_14_FONT_ID, NOTOSANS_16_FONT_ID,
+                                           NOTOSANS_18_FONT_ID};
+
+int koreanFontIdFor(const uint8_t pointSize) {
+  uint32_t hash = 2166136261u;
+  hash ^= pointSize;
+  hash *= 16777619u;
+  hash ^= 0x4B4F5200u;  // "KOR\0" salt keeps it apart from reader, UI and variant ids
+  const int id = static_cast<int>(hash);
+  return id != 0 ? id : 1;
 }
 
 }  // namespace
@@ -102,6 +109,10 @@ void SdCardFontSystem::begin(GfxRenderer& renderer) {
     return static_cast<SdCardFontSystem*>(ctx)->resolveFontId(familyName, pointSize);
   };
   SETTINGS.sdFontResolverCtx = this;
+  SETTINGS.fallbackFontIdResolver = [](void* ctx, const int fontId) -> int {
+    const auto* system = static_cast<SdCardFontSystem*>(ctx);
+    return system->renderer_ ? system->renderer_->getFallbackFontId(fontId) : 0;
+  };
 
   // If user has a saved SD font selection, load it
   if (SETTINGS.sdFontFamilyName[0] != '\0') {
@@ -118,8 +129,6 @@ void SdCardFontSystem::begin(GfxRenderer& renderer) {
 #endif
           if (manager_.loadFamily(*family, renderer, SETTINGS.fontPointSize)) {
         snapFontPointSizeTo(manager_.currentPointSize());
-        setupUiFallbacks(renderer);
-        installKoPubHanjaFallback(renderer, manager_.getFontId(SETTINGS.sdFontFamilyName));
         LOG_DBG("SDFS", "Loaded SD card font family: %s", SETTINGS.sdFontFamilyName);
       } else {
         LOG_ERR("SDFS", "Failed to load SD font family: %s (clearing)", SETTINGS.sdFontFamilyName);
@@ -131,7 +140,7 @@ void SdCardFontSystem::begin(GfxRenderer& renderer) {
     }
   }
 
-  installKoPubHanjaFallback(renderer);
+  installFallbacks(renderer);
   LOG_DBG("SDFS", "SD font system ready (%d families discovered)", registry_.getFamilyCount());
 }
 
@@ -145,6 +154,9 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
     LOG_DBG("SDFS", "Registry dirty — re-discovering fonts");
     registry_.discover();
   }
+  // A re-discovered card may hold a replaced Korean font file.
+  const bool koreanFontStale = koreanFontStale_.exchange(false, std::memory_order_acquire) || registryWasDirty;
+  if (koreanFontStale) unloadKoreanFont(renderer);
 
   const char* wantedFamily = SETTINGS.sdFontFamilyName;
 
@@ -155,6 +167,7 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
     const auto* wantedFam = registry_.findFamily(wantedFamily);
     if (wantedFam && wantedFam->vector) {
       if (!manager_.currentFamilyName().empty()) unloadCpfonts(renderer);
+      unloadKoreanFont(renderer);  // vector families register their own UI fallbacks
       loadTtfFamily(*wantedFam, renderer, registryWasDirty);
       return;
     }
@@ -174,7 +187,7 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
     // a size inherited from an SD family has to come back into that set.
     snapFontPointSizeTo(snapToNearestPointSize(BUILTIN_READER_POINT_SIZES, std::size(BUILTIN_READER_POINT_SIZES),
                                                SETTINGS.fontPointSize));
-    installKoPubHanjaFallback(renderer);
+    installFallbacks(renderer);
     return;
   }
 
@@ -188,6 +201,7 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
       LOG_DBG("SDFS", "SD font family disappeared: %s (clearing)", wantedFamily);
       unloadCpfonts(renderer);
       SETTINGS.clearSdFontFamily();
+      installFallbacks(renderer);
       return;
     }
     const auto* selected = family->findNearestSize(SETTINGS.fontPointSize);
@@ -195,7 +209,10 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
     // Snap before the early return: the wanted size can already be loaded while
     // the setting still names a size this family does not ship.
     snapFontPointSizeTo(wantedPt);
-    if (!registryWasDirty && wantedPt == manager_.currentPointSize()) return;
+    if (!registryWasDirty && wantedPt == manager_.currentPointSize()) {
+      if (koreanFontStale) installFallbacks(renderer);
+      return;
+    }
     LOG_DBG("SDFS", "Reloading %s: size %u -> %u%s", wantedFamily, manager_.currentPointSize(), wantedPt,
             registryWasDirty ? " [registry dirty]" : "");
   }
@@ -208,8 +225,6 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
   if (family) {
     if (manager_.loadFamily(*family, renderer, SETTINGS.fontPointSize)) {
       snapFontPointSizeTo(manager_.currentPointSize());
-      setupUiFallbacks(renderer);
-      installKoPubHanjaFallback(renderer, manager_.getFontId(wantedFamily));
       LOG_DBG("SDFS", "Loaded SD font family: %s", wantedFamily);
     } else {
       LOG_ERR("SDFS", "Failed to load SD font family: %s (clearing)", wantedFamily);
@@ -219,6 +234,7 @@ void SdCardFontSystem::ensureLoaded(GfxRenderer& renderer) {
     LOG_DBG("SDFS", "SD font family not found: %s (clearing)", wantedFamily);
     SETTINGS.clearSdFontFamily();
   }
+  installFallbacks(renderer);
 }
 
 void SdCardFontSystem::setupUiFallbacks(GfxRenderer& renderer) {
@@ -273,6 +289,74 @@ void SdCardFontSystem::setupUiFallbacks(GfxRenderer& renderer) {
       LOG_DBG("SDFS", "No %u pt SD glyphs for UI fallback in %s", ui.pointSize, familyName.c_str());
     }
   }
+}
+
+void SdCardFontSystem::installFallbacks(GfxRenderer& renderer) {
+#if CROSSPOINT_VECTOR_FONTS
+  if (ttf_) return;  // vector families register their own UI fallbacks
+#endif
+  const int sdReaderId = manager_.getFontId(manager_.currentFamilyName());
+  if (sdReaderId != 0) {
+    const auto readerIt = renderer.getFontMap().find(sdReaderId);
+    if (readerIt != renderer.getFontMap().end() && readerIt->second.hasCodepoint(HANGUL_PROBE_CODEPOINT) &&
+        readerIt->second.hasCodepoint(HANJA_PROBE_CODEPOINT)) {
+      unloadKoreanFont(renderer);
+      setupUiFallbacks(renderer);
+      return;
+    }
+  }
+
+  const uint8_t pointSize = sdReaderId != 0 ? manager_.currentPointSize() : SETTINGS.fontPointSize;
+  if (!loadKoreanFont(renderer, pointSize)) {
+    setupUiFallbacks(renderer);
+    return;
+  }
+  // One fallback per font: the UI fonts already cover Hangul, so Hanja is what they need.
+  // Built-in reader sizes other than the current one (headings) share this size.
+  if (sdReaderId != 0) {
+    renderer.setFallbackFont(sdReaderId, koreanFontId_);
+  } else {
+    for (const int fontId : BUILTIN_READER_FONT_IDS) renderer.setFallbackFont(fontId, koreanFontId_);
+  }
+  for (const auto& ui : kUiFontSizes) renderer.setFallbackFont(ui.fontId, koreanFontId_);
+}
+
+bool SdCardFontSystem::loadKoreanFont(GfxRenderer& renderer, const uint8_t pointSize) {
+  const auto* family = registry_.findFamily(KOREAN_FAMILY_NAME);
+  const auto* file = family ? family->findNearestSize(pointSize) : nullptr;
+  if (!file) {
+    unloadKoreanFont(renderer);
+    return false;
+  }
+  const int fontId = koreanFontIdFor(file->pointSize);
+  if (koreanFont_ && fontId == koreanFontId_) {
+    // SdCardFontManager::unloadAll() drops every SD registration, this one included.
+    renderer.registerSdCardFont(koreanFontId_, koreanFont_.get());
+    return true;
+  }
+
+  unloadKoreanFont(renderer);
+  // Resident cost is the header and coverage intervals, which the converter's interval gap
+  // keeps to a few hundred bytes; glyphs are read per page.
+  auto font = makeUniqueNoThrow<SdCardFont>();
+  if (!font || !font->load(file->path.c_str())) {
+    LOG_ERR("SDFS", "Failed to load Korean fallback font %s", file->path.c_str());
+    return false;
+  }
+  renderer.registerSdCardFont(fontId, font.get());
+  renderer.insertFont(
+      fontId, EpdFontFamily(font->getEpdFont(0), font->getEpdFont(1), font->getEpdFont(2), font->getEpdFont(3)));
+  koreanFont_ = std::move(font);
+  koreanFontId_ = fontId;
+  LOG_DBG("SDFS", "Loaded Korean fallback font %s", file->path.c_str());
+  return true;
+}
+
+void SdCardFontSystem::unloadKoreanFont(GfxRenderer& renderer) {
+  if (!koreanFont_) return;
+  renderer.removeFont(koreanFontId_);
+  koreanFont_.reset();
+  koreanFontId_ = 0;
 }
 
 int SdCardFontSystem::variantFontId(const int readerFontId, const uint8_t pointSize) {
